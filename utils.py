@@ -2,6 +2,7 @@ from git import Repo
 import ntpath
 import os
 from pathlib import Path
+from bs4 import Tag
 
 
 def if_dir_exists(filepath):
@@ -124,3 +125,16 @@ def save_response_content(response, destination):
             if chunk:
                 f.write(chunk)
                 f.flush()
+
+
+def link_to_text(content):
+    if content is not None:
+        for tag in content.find_all("a"):
+            span = Tag(name="span")
+            if tag.get("href", ""):
+                url = tag["href"]
+                if url.endswith(".pdf"):
+                    pass
+                elif url.startswith("http") or url.startswith("/"):
+                    tag.wrap(span)
+                    span.insert(1, " ("+url+")")
