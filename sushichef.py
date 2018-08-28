@@ -29,6 +29,7 @@ from utils import if_dir_exists, get_name_from_url, clone_repo, build_path
 from utils import if_file_exists, get_video_resolution_format, remove_links
 from utils import get_name_from_url_no_ext, get_node_from_channel, get_level_map
 from utils import remove_iframes, get_confirm_token, save_response_content
+from utils import link_to_text
 import youtube_dl
 
 
@@ -95,35 +96,38 @@ class LinkCollection:
         for link in self.links:
             self.collection.append(Collection(link.text, link.attrs.get("href", "")))
         
-    def run(self):
+    def to_node(self):
         for collection in self.collection:
-            yield collection.to_course()
+            yield collection.to_node()
 
 
 class Collection:
     def __init__(self, title, link):
         self.title = title
-        self.link = link
+        self.source_id = link
         self.collection = {
             CourseLibreTexts.title: CourseLibreTexts,
             #TextBooksTextMaps.title: TextBooksTextMaps
         }
 
-    def to_course(self):
+    def to_node(self):
         try:
             Course = self.collection[self.title]
         except KeyError:
             print("Not Found", self.title)
         else:
             LOGGER.info(self.title)
-            course = Course(Browser(self.link).run())
+            course = Course(Browser(self.source_id).run())
             course.units()
+            return course.to_node()
 
 
 class CourseLibreTexts(object):
     title = "Course LibreTexts"
     def __init__(self, urls):
         self.urls = urls
+        self.lang = "en"
+        self.tree_nodes = OrderedDict()
 
     def __iter__(self):
         return self.urls
@@ -134,19 +138,38 @@ class CourseLibreTexts(object):
     def units(self):
         for url in self:
             for link in Browser(url.attrs.get("href")).run():
-                unit_description = link.attrs.get("title")
-                print("UNIT", unit_description)
-                CourseIndex(link.attrs.get("href"))
+                course_index = CourseIndex(link.text, link.attrs.get("href"))
+                course_index.description = link.attrs.get("title")
+                path = [DATA_DIR, link.text]
+                course_index.index(build_path(path))
+                self.tree_nodes[course_index.source_id] = course_index.to_node()
+                return
+
+    def to_node(self):
+        return dict(
+            kind=content_kinds.TOPIC,
+            source_id=self.title,
+            title=self.title,
+            description="",
+            language=self.lang,
+            author="",
+            license=LICENSE,
+            children=list(self.tree_nodes.values())
+        )
             
 
 class CourseIndex(object):
-    def __init__(self, url):
-        self.url = url
-        document = download(self.url)
+    def __init__(self, title, url):
+        self.source_id = url
+        self.title = title
+        self.lang = "en"
+        self.description = None
+        self.tree_nodes = OrderedDict()
+
+        document = download(self.source_id)
         if document is not None:
             self.soup = BeautifulSoup(document, 'html5lib') #html5lib
         self.author()
-        self.index()
 
     def author(self):
         div = self.soup.find("div", "mt-author-container")
@@ -154,24 +177,45 @@ class CourseIndex(object):
             tag_a = div.find(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-author-information"))
             return tag_a.text
 
-    def index(self):
-        titles = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
-        if len(titles) == 0:
-            titles = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
-        if len(titles) == 0:
+    def index(self, base_path):
+        courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
+        if len(courses_link) == 0:
+            courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
+        if len(courses_link) == 0:
             query = QueryPage(self.soup)
             body = query.body()
-            titles = body.find_all("a")
+            courses_link = body.find_all("a")
 
-        for title in titles:
-            LOGGER.info("-- " + title.text)
-            document = download(title.attrs.get("href", ""))
+        index_base_path = build_path([base_path])
+        for course_link in courses_link:
+            LOGGER.info("-- " + course_link.text)
+            document = download(course_link.attrs.get("href", ""))
             if document is not None:
                 query = QueryPage(BeautifulSoup(document, 'html.parser'))
-                body = query.body()
-                if body is not None:
-                    for title in body.find_all("a"):
-                        LOGGER.info("---- " + title.text)
+                course_body = query.body()
+                if course_body is not None:
+                    chapter_basepath = build_path([index_base_path, course_link.text])
+                    for chapter_title in course_body.find_all("a"):
+                        LOGGER.info("---- " + chapter_title.text)
+                        chapter = Chapter(chapter_title.text, chapter_title.attrs.get("href", ""))
+                        video_nodes = chapter.video_nodes(chapter_basepath, chapter.body())
+                        chapter.to_file(chapter_basepath)
+                        self.tree_nodes[chapter.source_id] = chapter.to_node()
+                        for video_node in video_nodes:
+                            self.tree_nodes[video_node["source_id"]] = video_node
+                        return
+
+    def to_node(self):
+        return dict(
+            kind=content_kinds.TOPIC,
+            source_id=self.source_id,
+            title=self.title,
+            description=self.description,
+            language=self.lang,
+            author=self.author(),
+            license=LICENSE,
+            children=list(self.tree_nodes.values())
+        )
 
 
 class TextBooksTextMaps(object):
@@ -194,13 +238,24 @@ class TextBooksTextMaps(object):
 class Chapter:
     def __init__(self, title, url):
         self.title = title
-        self.url = url
+        self.source_id = url
         self.page = self.to_soup()
+        self.lang = "en"
+        self.filepath = None
 
     def to_soup(self):
-        document = download(title.attrs.get("href", ""))
+        document = download(self.source_id)
         if document is not None:
             return BeautifulSoup(document, 'html.parser')
+
+    def body(self):
+        return self.page.find("section", class_="mt-content-container")        
+
+    def clean(self, content):
+        link_to_text(content)
+        remove_links(content)
+        remove_iframes(content)
+        return content
 
     def get_images(self, content):
         for img in content.findAll("img"):
@@ -213,14 +268,39 @@ class Chapter:
                 img["src"] = filename
                 self.images[img_src] = filename
 
+    def video_nodes(self, base_path, content):
+        videos_url = self.get_videos_urls(content)
+        base_path = build_path([DATA_DIR, "videos"])
+        video_nodes = []
+        for video_url in videos_url:
+            if YouTubeResource.is_youtube(video_url):
+                video = YouTubeResource(video_url, lang=self.lang)
+                video.download(download=DOWNLOAD_VIDEOS, base_path=base_path)
+                video_nodes.append(video.to_node())
+        return video_nodes
+
+    def get_videos_urls(self, content):
+        urls = set([])
+        video_urls = content.find_all(lambda tag: tag.name == "a" and tag.attrs.get("href", "").find("youtube") != -1 or tag.attrs.get("href", "").find("youtu.be") != -1 or tag.text.lower() == "youtube")
+
+        for video_url in video_urls:
+            urls.add(video_url.get("href", ""))
+
+        for iframe in content.find_all("iframe"):
+            url = iframe["src"]
+            if YouTubeResource.is_youtube(url):
+                urls.add(YouTubeResource.transform_embed(url))
+
+        return urls
+
     def write_index(self, filepath, content):
         with html_writer.HTMLWriter(filepath, "w") as zipper:
             zipper.write_index_contents(content)
 
-    def write_contents(self, filepath_index, filename, content, directory="files"):
-        with html_writer.HTMLWriter(filepath_index, "a") as zipper:
-            content = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="../css/styles.css"></head><body>{}<script src="../js/scripts.js"></script></body></html>'.format(content)
-            zipper.write_contents(filename, content, directory=directory)
+    #def write_contents(self, filepath_index, filename, content, directory="files"):
+    #    with html_writer.HTMLWriter(filepath_index, "a") as zipper:
+    #        content = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="../css/styles.css"></head><body>{}<script src="../js/scripts.js"></script></body></html>'.format(content)
+    #        zipper.write_contents(filename, content, directory=directory)
 
     def write_css_js(self, filepath):
         with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
@@ -231,24 +311,36 @@ class Chapter:
             content = f.read()
             zipper.write_contents("scripts.js", content, directory="js/")
         
-    def to_file(self, filepath, base_path):
-        index_content_str = self.build_index()
-        if index_content_str is not None:
-            self.write_index(filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script></body></html>'.format(index_content_str))
-            self.write_css_js(filepath)
-            for i, item in enumerate(self.items.values()):
-                self.write_images(filepath, item["content"])
-                file_nodes = self.write_pdfs(base_path, item["content"])
-                video_nodes = self.write_video(base_path, item["content"])
-                self.pager(item["content"], i)
-                self.clean_content(item["content"])
-                content = '<div class="sidebar"><a class="sidebar-link toggle-sidebar-button" href="javascript:void(0)" onclick="javascript:toggleNavMenu();">&#9776;</a>'+\
-                self.build_index(directory="./") +"</div>"+\
-                '<div class="main-content-with-sidebar">'+str(item["content"])+'</div>'
-                self.write_contents(filepath, item["filename"], content)
+    def to_file(self, base_path):
+        self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        body = self.clean(self.body())
+        self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script></body></html>'.format(body))
+        self.write_css_js(self.filepath)
+        #for i, item in enumerate(self.items.values()):
+        #    self.write_images(filepath, item["content"])
+        #    file_nodes = self.write_pdfs(base_path, item["content"])
+        #    video_nodes = self.write_video(base_path, item["content"])
+        #    self.pager(item["content"], i)
+        #    self.clean_content(item["content"])
+        #    content = '<div class="sidebar"><a class="sidebar-link toggle-sidebar-button" href="javascript:void(0)" onclick="javascript:toggleNavMenu();">&#9776;</a>'+\
+        #    self.build_index(directory="./") +"</div>"+\
+        #    '<div class="main-content-with-sidebar">'+str(item["content"])+'</div>'
+        #    self.write_contents(filepath, item["filename"], content)
 
     def to_node(self):
-        return
+        return dict(
+            kind=content_kinds.HTML5,
+            source_id=self.source_id,
+            title=self.title,
+            description="",
+            thumbnail=None,
+            author="",
+            files=[dict(
+                file_type=content_kinds.HTML5,
+                path=self.filepath
+            )],
+            language=self.lang,
+            license=LICENSE)
 
 
 class QueryPage:
@@ -272,103 +364,9 @@ class QueryPage:
             json = requests.get(url).json()
             return BeautifulSoup(json["body"], 'html.parser')
 
-class TopicPage:
-    def __init__(self):
-        self.pages = []
-        self.page_i = 1
-
-    def add(self, page):
-        self.pages.append(page)
-
-    def merge(self, from_i=1, to_i=None):
-        topic = self.pages[0].write_videos(from_i=from_i, to_i=to_i)
-        topic_node = topic.to_node()
-        for page_parser in self.pages[1:]:
-            topic = page_parser.write_videos(from_i=from_i, to_i=to_i)
-            node = topic.to_node()
-            topic_node["children"].extend(node["children"])
-        return topic_node
-
-
-class PageParser:
-    def __init__(self, page_url, title=None, lang="ar"):
-        self.page_url = page_url
-        self.page = self.to_soup()
-        self.section_nodes = self.page.findAll("div", class_="talk-link")
-        self.title = title
-        self.lang = lang
-
-    def to_soup(self):
-        document = download(self.page_url)
-        if document is not None:
-            return BeautifulSoup(document, 'html.parser') #html5lib
-
-    def get_tedtalk(self, from_i=0, to_i=None):
-        to_i = len(self.section_nodes) + 1 if to_i is None else to_i
-        for i, section_node in enumerate(self.section_nodes, 1):
-            if from_i <= i < to_i:
-                tag_a = section_node.find(lambda tag: tag.name == "a" and tag.findParent("h4"))
-                url = urljoin(BASE_URL, tag_a.attrs.get("href", ""))
-                parsed = urlparse(url)
-                yield TedTalk(url, title=tag_a.text.replace("\n", ""), 
-                    lang=parse_qs(parsed.query)['language'])
-
-    def write_videos(self, from_i=0, to_i=None):
-        LOGGER.info("Parsing: {}".format(self.page_url))
-        path = [DATA_DIR] + ["tedtalks_videos"]
-        path = build_path(path)
-        topic = Topic(self.title, lang=self.lang)
-        for tedtalk in self.get_tedtalk(from_i=from_i, to_i=to_i):
-            tedtalk.download(download=DOWNLOAD_VIDEOS, base_path=path)
-            topic.add(tedtalk.to_node())
-        return topic
-
-    def is_null(self):
-        return len(self.section_nodes) == 0
-
-
-class Topic:
-    def __init__(self, title=None, lang="ar"):
-        self.tree_nodes = OrderedDict()
-        self.lang = lang
-        self.title = title
-
-    def add(self, node):
-        if node is not None:
-            if node["source_id"] not in self.tree_nodes:
-                self.tree_nodes[node["source_id"]] = node
-
-    def to_node(self):
-        return dict(
-            kind=content_kinds.TOPIC,
-            source_id=self.title,
-            title=self.title,
-            description="",
-            language=self.lang,
-            author=AUTHOR,
-            license=LICENSE,
-            children=list(self.tree_nodes.values())
-        )
-
-
-class TedTalk:
-    def __init__(self, page_url, title, lang="ar"):
-        self.page_url = page_url
-        self.lang = lang
-        self.title = title
-        self.video = None
-
-    def download(self, download=True, base_path=None):
-        LOGGER.info("  Title: {}".format(self.title))
-        self.video = YouTubeResource(self.page_url, name=self.title, lang=self.lang)
-        self.video.download(download, base_path)
-
-    def to_node(self):
-        return self.video.to_node()
-
 
 class YouTubeResource(object):
-    def __init__(self, source_id, name=None, type_name="Youtube", lang="ar", 
+    def __init__(self, source_id, name=None, type_name="Youtube", lang="en", 
             embeded=False, section_title=None, description=None):
         LOGGER.info("    + Resource Type: {}".format(type_name))
         LOGGER.info("    - URL: {}".format(source_id))
@@ -397,6 +395,8 @@ class YouTubeResource(object):
             name = self.source_id.split("/")[-1]
             name = name.split("?")[0]
             return " ".join(name.split("_")).title()
+        else:
+            return name
 
     @classmethod
     def is_youtube(self, url, get_channel=False):
@@ -438,27 +438,17 @@ class YouTubeResource(object):
     def subtitles_dict(self):
         subs = []
         video_info = self.get_video_info()
-        settings = {
-            'skip_download': False,
-            'writesubtitles': True,
-            'subtitlesformat': "best[ext={}]".format(file_formats.SRT),
-            'quiet': False,
-            'no_warnings': True
-        }
         if video_info is not None:
             video_id = video_info["id"]
             if 'subtitles' in video_info:
                 subtitles_info = video_info["subtitles"]
-                language = "ar"
-                for info in subtitles_info[language]:
-                    if info["ext"] == "srt":
-                        subs.append(dict(file_type=SUBTITLES_FILE, path=info["url"],
-                        language=language, settings=settings))
-                        break
+                LOGGER.info("Subtitles: {}".format(",".join(subtitles_info.keys())))
+                for language in subtitles_info.keys():
+                    subs.append(dict(file_type=SUBTITLES_FILE, youtube_id=video_id, language=language))
         return subs
 
     def download(self, download=True, base_path=None):
-        download_to = build_path([base_path, self.section_title])
+        download_to = build_path([base_path])
         for i in range(4):
             try:
                 info = self.get_video_info(download_to=download_to, subtitles=False)
@@ -466,7 +456,7 @@ class YouTubeResource(object):
                     LOGGER.info("    + Video resolution: {}x{}".format(info.get("width", ""), info.get("height", "")))
                     if self. description is None:
                         self.description = info["description"]
-                    self.filepath = os.path.join(download_to, "{}".format(info["id"]))
+                    self.filepath = os.path.join(download_to, "{}.mp4".format(info["id"]))
                     self.filename = info["title"]
                     if self.filepath is not None and os.stat(self.filepath).st_size == 0:
                         LOGGER.info("    + Empty file")
@@ -493,7 +483,7 @@ class YouTubeResource(object):
                 source_id=self.source_id,
                 title=self.name if self.name is not None else self.filename,
                 description=self.description,
-                author=AUTHOR,
+                author=None,
                 files=files,
                 language=self.lang,
                 license=LICENSE
@@ -598,10 +588,9 @@ class PhysLibreTextsChef(JsonTreeChef):
         browser = Browser(BASE_URL)
         links = browser.run(p_from_i, p_to_i)
         collections = LinkCollection(links)
-        for collection in collections.run():
-            collection
-        #topic_videos_node = topic_page.merge(v_from_i, v_to_i)
-        #channel_tree["children"].append(topic_videos_node)
+        for collection_node in collections.to_node():
+            if collection_node is not None:
+                channel_tree["children"].append(collection_node)
         return channel_tree
 
     def write_tree_to_json(self, channel_tree):
