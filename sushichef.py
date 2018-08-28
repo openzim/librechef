@@ -163,14 +163,91 @@ class CourseIndex(object):
             titles = body.find_all("a")
 
         for title in titles:
-            print("--", title.text)
+            LOGGER.info("-- " + title.text)
             document = download(title.attrs.get("href", ""))
             if document is not None:
                 query = QueryPage(BeautifulSoup(document, 'html.parser'))
                 body = query.body()
                 if body is not None:
                     for title in body.find_all("a"):
-                        print("----", title.text)
+                        LOGGER.info("---- " + title.text)
+
+
+class TextBooksTextMaps(object):
+    title = "TextBooks & TextMaps"
+    def __init__(self, urls):
+        self.urls = urls
+
+    def __iter__(self):
+        return self.urls
+
+    def __next__(self):
+        return next(self.urls)
+
+    def units(self):
+        for url in self:
+            for link in Browser(url.attrs.get("href")).run():
+                print(link.text)
+
+
+class Chapter:
+    def __init__(self, title, url):
+        self.title = title
+        self.url = url
+        self.page = self.to_soup()
+
+    def to_soup(self):
+        document = download(title.attrs.get("href", ""))
+        if document is not None:
+            return BeautifulSoup(document, 'html.parser')
+
+    def get_images(self, content):
+        for img in content.findAll("img"):
+            if img["src"].startswith("/"):
+                img_src = urljoin(BASE_URL, img["src"])
+            else:
+                img_src = img["src"]
+            filename = get_name_from_url(img_src)
+            if img_src not in self.images and img_src:
+                img["src"] = filename
+                self.images[img_src] = filename
+
+    def write_index(self, filepath, content):
+        with html_writer.HTMLWriter(filepath, "w") as zipper:
+            zipper.write_index_contents(content)
+
+    def write_contents(self, filepath_index, filename, content, directory="files"):
+        with html_writer.HTMLWriter(filepath_index, "a") as zipper:
+            content = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="../css/styles.css"></head><body>{}<script src="../js/scripts.js"></script></body></html>'.format(content)
+            zipper.write_contents(filename, content, directory=directory)
+
+    def write_css_js(self, filepath):
+        with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
+            content = f.read()
+            zipper.write_contents("styles.css", content, directory="css/")
+
+        with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/scripts.js") as f:
+            content = f.read()
+            zipper.write_contents("scripts.js", content, directory="js/")
+        
+    def to_file(self, filepath, base_path):
+        index_content_str = self.build_index()
+        if index_content_str is not None:
+            self.write_index(filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script></body></html>'.format(index_content_str))
+            self.write_css_js(filepath)
+            for i, item in enumerate(self.items.values()):
+                self.write_images(filepath, item["content"])
+                file_nodes = self.write_pdfs(base_path, item["content"])
+                video_nodes = self.write_video(base_path, item["content"])
+                self.pager(item["content"], i)
+                self.clean_content(item["content"])
+                content = '<div class="sidebar"><a class="sidebar-link toggle-sidebar-button" href="javascript:void(0)" onclick="javascript:toggleNavMenu();">&#9776;</a>'+\
+                self.build_index(directory="./") +"</div>"+\
+                '<div class="main-content-with-sidebar">'+str(item["content"])+'</div>'
+                self.write_contents(filepath, item["filename"], content)
+
+    def to_node(self):
+        return
 
 
 class QueryPage:
@@ -193,24 +270,6 @@ class QueryPage:
             url = "{}@api/deki/pages/=Template%253AMindTouch%252FIDF3%252FViews%252FTopic_hierarchy/contents?dream.out.format=json&origin=mt-web&pageid={}&draft=false&guid={}".format(BASE_URL, self.page_id, self.guid)
             json = requests.get(url).json()
             return BeautifulSoup(json["body"], 'html.parser')
-
-
-class TextBooksTextMaps(object):
-    title = "TextBooks & TextMaps"
-    def __init__(self, urls):
-        self.urls = urls
-
-    def __iter__(self):
-        return self.urls
-
-    def __next__(self):
-        return next(self.urls)
-
-    def units(self):
-        for url in self:
-            for link in Browser(url.attrs.get("href")).run():
-                print(link.text)
-
 
 class TopicPage:
     def __init__(self):
@@ -499,7 +558,17 @@ class PhysLibreTextsChef(JsonTreeChef):
         super(PhysLibreTextsChef, self).__init__()
 
     def pre_run(self, args, options):
+        self.download_css_js()
         self.write_tree_to_json(self.scrape(args, options))
+
+    def download_css_js(self):
+        r = requests.get("https://raw.githubusercontent.com/learningequality/html-app-starter/master/css/styles.css")
+        with open("chefdata/styles.css", "wb") as f:
+            f.write(r.content)
+
+        r = requests.get("https://raw.githubusercontent.com/learningequality/html-app-starter/master/js/scripts.js")
+        with open("chefdata/scripts.js", "wb") as f:
+            f.write(r.content)
 
     def scrape(self, args, options):
         only_pages = options.get('--only-pages', None)
