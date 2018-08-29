@@ -101,8 +101,8 @@ class Collection:
         self.title = title
         self.source_id = link
         self.collection = {
-            CourseLibreTexts.title: CourseLibreTexts,
-            #TextBooksTextMaps.title: TextBooksTextMaps
+            #CourseLibreTexts.title: CourseLibreTexts,
+            TextBooksTextMaps.title: TextBooksTextMaps
         }
 
     def to_node(self):
@@ -138,7 +138,6 @@ class CourseLibreTexts(object):
                 path = [DATA_DIR, link.text]
                 course_index.index(build_path(path))
                 self.tree_nodes[course_index.source_id] = course_index.to_node()
-                return
 
     def to_node(self):
         return dict(
@@ -181,24 +180,45 @@ class CourseIndex(object):
             body = query.body()
             courses_link = body.find_all("a")
 
+        courses_list = self.soup.find_all("li", class_="mt-sortable-listing")
+        thumnails = {}
+        for course_li in courses_list:
+            link = course_li.find("a").get("href")
+            img = course_li.find("img")
+            if img is not None:
+                thumnails[link] = img["src"]
+
         index_base_path = build_path([base_path])
         for course_link in courses_link:
-            LOGGER.info("-- " + course_link.text)
-            document = download(course_link.attrs.get("href", ""))
+            course_link_href = course_link.attrs.get("href", "")
+            document = download(course_link_href)
             if document is not None:
                 query = QueryPage(BeautifulSoup(document, 'html.parser'))
                 course_body = query.body()
                 if course_body is not None:
+                    course = Course(course_link.text, course_link_href, self.author())
+                    course.thumbnail = thumnails[course_link_href]
                     chapter_basepath = build_path([index_base_path, course_link.text])
                     for chapter_title in course_body.find_all("a"):
-                        LOGGER.info("---- " + chapter_title.text)
                         chapter = Chapter(chapter_title.text, chapter_title.attrs.get("href", ""))
                         video_nodes = chapter.video_nodes(chapter_basepath, chapter.body())
                         chapter.to_file(chapter_basepath)
-                        self.tree_nodes[chapter.source_id] = chapter.to_node()
-                        for video_node in video_nodes:
-                            self.tree_nodes[video_node["source_id"]] = video_node
-                        #return
+                        if len(video_nodes) > 0:
+                            node = chapter.topic_node()
+                            node["children"].append(chapter.to_node())
+                            for video_node in video_nodes:
+                                node["children"].append(video_node)
+                        else:
+                            node = chapter.to_node()
+                        course.add_node(node)
+                        #break
+                    self.tree_nodes[course.source_id] = course.to_node()
+                    #break
+                else:
+                    agenda = AgendaOrFlatPage(course_link.text, course_link_href)
+                    chapter_basepath = build_path([index_base_path, course_link.text])
+                    agenda.to_file(chapter_basepath)
+                    self.tree_nodes[agenda.source_id] = agenda.to_node()
 
     def to_node(self):
         return dict(
@@ -211,6 +231,106 @@ class CourseIndex(object):
             license=LICENSE,
             children=list(self.tree_nodes.values())
         )
+
+
+class Course(object):
+    def __init__(self, title, url, author):
+        self.source_id = url
+        self.title = title
+        self.author = author
+        self.lang = "en"
+        self._thumbnail = None
+        self.tree_nodes = OrderedDict()
+        LOGGER.info("-- " + self.title)
+
+    @property
+    def thumbnail(self):
+        return self._thumbnail
+
+    @thumbnail.setter
+    def thumbnail(self, url):
+        r = requests.get(url)
+        filename = "{}.png".format(self.title)
+        base_dir = build_path([DATA_DIR, "thumbnails"])
+        filepath = os.path.join(base_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(r.content)
+        self._thumbnail = filepath
+
+    def add_node(self, node):
+        self.tree_nodes[node["source_id"]] = node
+
+    def to_node(self):
+        return dict(
+            kind=content_kinds.TOPIC,
+            source_id=self.source_id,
+            title=self.title,
+            description="",
+            language=self.lang,
+            thumbnail=self.thumbnail,
+            author=self.author,
+            license=LICENSE,
+            children=list(self.tree_nodes.values())
+        )
+
+
+class AgendaOrFlatPage(object):
+    def __init__(self, title, url):
+        self.source_id = url
+        self.title = title
+        self.page = self.to_soup()
+        self.lang = "en"
+        self.filepath = None
+        LOGGER.info("-- " + self.title)
+
+    def write_css_js(self, filepath):
+        with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
+            content = f.read()
+            zipper.write_contents("styles.css", content, directory="css/")
+
+        with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/scripts.js") as f:
+            content = f.read()
+            zipper.write_contents("scripts.js", content, directory="js/")
+
+    def body(self):
+        return self.page.find("section", class_="mt-content-container")        
+
+    def clean(self, content):
+        link_to_text(content)
+        remove_links(content)
+        remove_iframes(content)
+        remove_scripts(content)
+        return content
+
+    def to_soup(self):
+        document = download(self.source_id)
+        if document is not None:
+            return BeautifulSoup(document, 'html.parser')
+
+    def write_index(self, filepath, content):
+        with html_writer.HTMLWriter(filepath, "w") as zipper:
+            zipper.write_index_contents(content)
+
+    def to_file(self, base_path):
+        self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        body = self.clean(self.body())
+        self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(body))
+        self.write_css_js(self.filepath)
+
+    def to_node(self):
+        return dict(
+            kind=content_kinds.HTML5,
+            source_id=self.source_id,
+            title=self.title,
+            description="",
+            thumbnail=None,
+            author="",
+            files=[dict(
+                file_type=content_kinds.HTML5,
+                path=self.filepath
+            )],
+            language=self.lang,
+            license=LICENSE)
 
 
 class TextBooksTextMaps(object):
@@ -230,28 +350,14 @@ class TextBooksTextMaps(object):
                 print(link.text)
 
 
-class Chapter:
+class Chapter(AgendaOrFlatPage):
     def __init__(self, title, url):
         self.title = title
         self.source_id = url
         self.page = self.to_soup()
         self.lang = "en"
         self.filepath = None
-
-    def to_soup(self):
-        document = download(self.source_id)
-        if document is not None:
-            return BeautifulSoup(document, 'html.parser')
-
-    def body(self):
-        return self.page.find("section", class_="mt-content-container")        
-
-    def clean(self, content):
-        link_to_text(content)
-        remove_links(content)
-        remove_iframes(content)
-        remove_scripts(content)
-        return content
+        LOGGER.info("---- " + self.title)
 
     def mathjax(self):
         scripts = self.page.find_all("script", type="text/x-mathjax-config")
@@ -274,7 +380,8 @@ class Chapter:
             "extensions/TeX/cancel.js",
             "jax/output/HTML-CSS/jax.js",
             "jax/output/HTML-CSS/fonts/TeX/fontdata.js",
-            "jax/output/HTML-CSS/autoload/mtable.js"
+            "jax/output/HTML-CSS/autoload/mtable.js",
+            #"jax/output/HTML-CSS/imageFonts.js"
         ]
         for dep in dependences:
             filename = dep.split("/")[-1]
@@ -284,7 +391,7 @@ class Chapter:
                 content = f.read()
                 zipper.write_contents(filename, content, directory="js/"+dep_path)
 
-    def get_images(self, content):
+    def to_local_images(self, content):
         images_urls = {}
         for img in content.findAll("img"):
             try:
@@ -325,27 +432,16 @@ class Chapter:
 
         return urls
 
-    def write_index(self, filepath, content):
-        with html_writer.HTMLWriter(filepath, "w") as zipper:
-            zipper.write_index_contents(content)
-
-    def write_images(self, filepath, content):
-        images = self.get_images(content)
+    def write_images(self, filepath, images):
         with html_writer.HTMLWriter(filepath, "a") as zipper:
             for img_src, img_filename in images.items():
                 try:
-                    zipper.write_url(img_src, img_filename, directory=".")
+                    if img_src.startswith("data:image/png;base64,"):
+                        pass
+                    else:
+                        zipper.write_url(img_src, img_filename, directory="")
                 except requests.exceptions.HTTPError:
                     pass
-
-    def write_css_js(self, filepath):
-        with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
-            content = f.read()
-            zipper.write_contents("styles.css", content, directory="css/")
-
-        with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/scripts.js") as f:
-            content = f.read()
-            zipper.write_contents("scripts.js", content, directory="js/")
         
     def write_mathjax(self, filepath):
         script_tag = self.page.find(lambda tag: tag.name == "script" and tag.attrs.get("src", "").find("MathJax.js") != -1)
@@ -366,11 +462,25 @@ class Chapter:
         self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
         mathjax_scripts = self.mathjax()
         body = self.clean(self.body())
+        images = self.to_local_images(body)
         self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
-        self.write_images(self.filepath, body)
+        self.write_images(self.filepath, images)
         self.write_css_js(self.filepath)
         self.write_mathjax(self.filepath)
         self.mathjax_dependences(self.filepath)
+
+    def topic_node(self):
+        return dict(
+            kind=content_kinds.TOPIC,
+            source_id=self.source_id,
+            title=self.title,
+            description="",
+            language=self.lang,
+            author="",
+            license=LICENSE,
+            thumbnail=None,
+            children=[]
+        )
 
     def to_node(self):
         return dict(
