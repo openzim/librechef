@@ -112,23 +112,51 @@ class Collection:
             print("Not Found", self.title)
         else:
             LOGGER.info(self.title)
-            course = Course(Browser(self.source_id).run())
+            course = Course(self.source_id)
+            course.populate_thumbnails()
             course.units()
             return course.to_node()
 
 
-class CourseLibreTexts(object):
-    title = "Course LibreTexts"
-    def __init__(self, urls):
-        self.urls = urls
+class Topic(object):
+    def __init__(self, url):
+        self.source_id = url
+        self.urls = Browser(self.source_id).run()
         self.lang = "en"
         self.tree_nodes = OrderedDict()
+        self.thumbnails_links = {}
+        self.description = ""
+        self.soup = self.to_soup()
+
+    def to_soup(self):
+        document = download(self.source_id)
+        if document is not None:
+            return BeautifulSoup(document, 'html5lib') #html5lib
 
     def __iter__(self):
         return self.urls
 
     def __next__(self):
         return next(self.urls)
+
+    def populate_thumbnails(self):
+        pass
+
+    def to_node(self):
+        return dict(
+            kind=content_kinds.TOPIC,
+            source_id=self.title,
+            title=self.title,
+            description=self.description,
+            language=self.lang,
+            author="",
+            license=LICENSE,
+            children=list(self.tree_nodes.values())
+        )
+
+
+class CourseLibreTexts(Topic):
+    title = "Course LibreTexts"
 
     def units(self):
         for url in self:
@@ -139,6 +167,61 @@ class CourseLibreTexts(object):
                 course_index.index(build_path(path))
                 self.tree_nodes[course_index.source_id] = course_index.to_node()
 
+
+class TextBooksTextMaps(Topic):
+    title = "TextBooks & TextMaps"
+
+    def populate_thumbnails(self):
+        self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
+
+    def units(self):
+        self.description = self.soup.find(lambda tag: tag.name == "p" and tag.findParent("section", class_="mt-content-container")).text
+        for content_link in self:
+            url = content_link.attrs.get("href")
+            text_book = TextBooksTextMapsCategory(content_link.text, url)
+            text_book.populate_thumbnails()
+            text_book.thumbnail = self.thumbnails_links[url]
+            text_book.courses()
+            self.tree_nodes[text_book.source_id] = text_book.to_node()
+            break
+
+
+class TextBooksTextMapsCategory(object):
+    def __init__(self, title, url):
+        self.source_id = url
+        self.title = title
+        self.lang = "en"
+        self.tree_nodes = OrderedDict()
+        self.thumbnails_links = {}
+        self.soup = self.to_soup()
+
+    def to_soup(self):
+        document = download(self.source_id)
+        if document is not None:
+            return BeautifulSoup(document, 'html5lib') #html5lib
+
+    @property
+    def thumbnail(self):
+        return self._thumbnail
+
+    @thumbnail.setter
+    def thumbnail(self, url):
+        self._thumbnail = save_thumbnail(url, self.title)
+
+    def populate_thumbnails(self):
+        self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
+
+    def courses(self):
+        for link in Browser(self.source_id).run():
+            url = link.attrs.get("href")
+            course_index = CourseIndex(link.text, url)
+            course_index.description = link.attrs.get("title")
+            course_index.thumbnail = self.thumbnails_links[url]
+            path = [DATA_DIR, link.text]
+            course_index.index(build_path(path))
+            self.tree_nodes[course_index.source_id] = course_index.to_node()
+            break
+
     def to_node(self):
         return dict(
             kind=content_kinds.TOPIC,
@@ -147,10 +230,37 @@ class CourseLibreTexts(object):
             description="",
             language=self.lang,
             author="",
+            thumbnail = self.thumbnail,
             license=LICENSE,
             children=list(self.tree_nodes.values())
         )
-            
+        
+
+def thumbnails_links(soup, tag, class_):
+    courses_list = soup.find_all(tag, class_=class_)
+    thumnails = {}
+    for course_li in courses_list:
+        link = course_li.find("a").get("href")
+        img = course_li.find("img")
+        if img is not None:
+            thumnails[link] = img["src"]
+    return thumnails
+
+
+def save_thumbnail(url, title):
+    import imghdr
+    from io import BytesIO
+    r = requests.get(url)
+    img_buffer = BytesIO(r.content)
+    img_ext = imghdr.what(img_buffer)        
+    filename = "{}.{}".format(title, img_ext)
+    base_dir = build_path([DATA_DIR, "thumbnails"])
+    filepath = os.path.join(base_dir, filename)
+    with open(filepath, "wb") as f:
+        f.write(img_buffer.read())
+    return filepath
+
+
 
 class CourseIndex(object):
     def __init__(self, title, url):
@@ -159,11 +269,22 @@ class CourseIndex(object):
         self.lang = "en"
         self.description = None
         self.tree_nodes = OrderedDict()
+        self.soup = self.to_soup()
+        self.author()
+        self._thumbnail = None
 
+    def to_soup(self):
         document = download(self.source_id)
         if document is not None:
-            self.soup = BeautifulSoup(document, 'html5lib') #html5lib
-        self.author()
+            return BeautifulSoup(document, 'html5lib') #html5lib
+
+    @property
+    def thumbnail(self):
+        return self._thumbnail
+
+    @thumbnail.setter
+    def thumbnail(self, url):
+        self._thumbnail = save_thumbnail(url, self.title)
 
     def author(self):
         div = self.soup.find("div", "mt-author-container")
@@ -180,25 +301,19 @@ class CourseIndex(object):
             body = query.body()
             courses_link = body.find_all("a")
 
-        courses_list = self.soup.find_all("li", class_="mt-sortable-listing")
-        thumnails = {}
-        for course_li in courses_list:
-            link = course_li.find("a").get("href")
-            img = course_li.find("img")
-            if img is not None:
-                thumnails[link] = img["src"]
+        thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
         index_base_path = build_path([base_path])
         for course_link in courses_link:
             course_link_href = course_link.attrs.get("href", "")
             document = download(course_link_href)
+            chapter_basepath = build_path([index_base_path, course_link.text])
             if document is not None:
                 query = QueryPage(BeautifulSoup(document, 'html.parser'))
                 course_body = query.body()
                 if course_body is not None:
                     course = Course(course_link.text, course_link_href, self.author())
-                    course.thumbnail = thumnails[course_link_href]
-                    chapter_basepath = build_path([index_base_path, course_link.text])
+                    course.thumbnail = thumbnails[course_link_href]
                     for chapter_title in course_body.find_all("a"):
                         chapter = Chapter(chapter_title.text, chapter_title.attrs.get("href", ""))
                         video_nodes = chapter.video_nodes(chapter_basepath, chapter.body())
@@ -215,10 +330,22 @@ class CourseIndex(object):
                     self.tree_nodes[course.source_id] = course.to_node()
                     #break
                 else:
-                    agenda = AgendaOrFlatPage(course_link.text, course_link_href)
-                    chapter_basepath = build_path([index_base_path, course_link.text])
-                    agenda.to_file(chapter_basepath)
-                    self.tree_nodes[agenda.source_id] = agenda.to_node()
+                    if course_link.text.strip() == "Agenda":
+                        agenda = AgendaOrFlatPage(course_link.text, course_link_href)
+                        agenda.to_file(chapter_basepath)
+                        self.tree_nodes[agenda.source_id] = agenda.to_node()
+                    else:
+                        chapter = Chapter(course_link.text, course_link.attrs.get("href", ""))
+                        video_nodes = chapter.video_nodes(chapter_basepath, chapter.body())
+                        chapter.to_file(chapter_basepath)
+                        if len(video_nodes) > 0:
+                            node = chapter.topic_node()
+                            node["children"].append(chapter.to_node())
+                            for video_node in video_nodes:
+                                node["children"].append(video_node)
+                        else:
+                            node = chapter.to_node()
+                        self.tree_nodes[chapter.source_id] = node
 
     def to_node(self):
         return dict(
@@ -227,6 +354,7 @@ class CourseIndex(object):
             title=self.title,
             description=self.description,
             language=self.lang,
+            thumbnail=self.thumbnail,
             author=self.author(),
             license=LICENSE,
             children=list(self.tree_nodes.values())
@@ -249,13 +377,7 @@ class Course(object):
 
     @thumbnail.setter
     def thumbnail(self, url):
-        r = requests.get(url)
-        filename = "{}.png".format(self.title)
-        base_dir = build_path([DATA_DIR, "thumbnails"])
-        filepath = os.path.join(base_dir, filename)
-        with open(filepath, "wb") as f:
-            f.write(r.content)
-        self._thumbnail = filepath
+        self._thumbnail = save_thumbnail(url, self.title)
 
     def add_node(self, node):
         self.tree_nodes[node["source_id"]] = node
@@ -331,23 +453,6 @@ class AgendaOrFlatPage(object):
             )],
             language=self.lang,
             license=LICENSE)
-
-
-class TextBooksTextMaps(object):
-    title = "TextBooks & TextMaps"
-    def __init__(self, urls):
-        self.urls = urls
-
-    def __iter__(self):
-        return self.urls
-
-    def __next__(self):
-        return next(self.urls)
-
-    def units(self):
-        for url in self:
-            for link in Browser(url.attrs.get("href")).run():
-                print(link.text)
 
 
 class Chapter(AgendaOrFlatPage):
