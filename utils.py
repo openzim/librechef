@@ -21,6 +21,12 @@ def remove_links(content):
             link.replaceWithChildren()
 
 
+def remove_scripts(content):
+    if content is not None:
+        for s in content.find_all("script"):
+            s.extract()
+
+
 def get_name_from_url(url):
     head, tail = ntpath.split(url)
     params_index = tail.find("&")
