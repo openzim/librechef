@@ -29,7 +29,7 @@ from utils import if_dir_exists, get_name_from_url, clone_repo, build_path
 from utils import if_file_exists, get_video_resolution_format, remove_links
 from utils import get_name_from_url_no_ext, get_node_from_channel, get_level_map
 from utils import remove_iframes, get_confirm_token, save_response_content
-from utils import link_to_text
+from utils import link_to_text, remove_scripts
 import youtube_dl
 
 
@@ -74,14 +74,9 @@ class Browser:
     def run(self, from_i=1, to_i=None):
         document = download(self.url)
         if document is not None:
-            soup = BeautifulSoup(document, 'html5lib') #html5lib
+            soup = BeautifulSoup(document, 'html5lib') #html.parser
         section = soup.find("section", class_="mt-content-container")
         section_div = section.find("div", class_="noindex")
-        #if section_div is None:
-        #    section_div = section.find("div", class_="mt-guide-tabs-container")
-
-        #if section_div is None:
-        #    section_div = section.find("div", class_="mt-guide-content")
         for tag_a in section_div.find_all("a"):
             yield tag_a
 
@@ -203,7 +198,7 @@ class CourseIndex(object):
                         self.tree_nodes[chapter.source_id] = chapter.to_node()
                         for video_node in video_nodes:
                             self.tree_nodes[video_node["source_id"]] = video_node
-                        return
+                        #return
 
     def to_node(self):
         return dict(
@@ -255,18 +250,55 @@ class Chapter:
         link_to_text(content)
         remove_links(content)
         remove_iframes(content)
+        remove_scripts(content)
         return content
 
+    def mathjax(self):
+        scripts = self.page.find_all("script", type="text/x-mathjax-config")
+        return "".join([str(s) for s in scripts])
+
+    def mathjax_dependences(self, filepath):
+        mathajax_path = "../../MathJax/"
+        dependences = [
+            "config/TeX-AMS_HTML.js",
+            "jax/input/TeX/config.js",
+            "jax/input/MathML/config.js",
+            "jax/output/SVG/config.js",
+            "extensions/tex2jax.js",
+            "extensions/mml2jax.js",
+            "extensions/MathMenu.js",
+            "extensions/MathZoom.js",
+            "extensions/TeX/autobold.js",
+            "extensions/TeX/mhchem.js",
+            "extensions/TeX/color.js", 
+            "extensions/TeX/cancel.js",
+            "jax/output/HTML-CSS/jax.js",
+            "jax/output/HTML-CSS/fonts/TeX/fontdata.js",
+            "jax/output/HTML-CSS/autoload/mtable.js"
+        ]
+        for dep in dependences:
+            filename = dep.split("/")[-1]
+            dep_path = "/".join(dep.split("/")[:-1])
+            dep_file_path = os.path.join(mathajax_path, dep_path, filename)
+            with html_writer.HTMLWriter(filepath, "a") as zipper, open(dep_file_path) as f:
+                content = f.read()
+                zipper.write_contents(filename, content, directory="js/"+dep_path)
+
     def get_images(self, content):
+        images_urls = {}
         for img in content.findAll("img"):
-            if img["src"].startswith("/"):
-                img_src = urljoin(BASE_URL, img["src"])
-            else:
+            try:
                 img_src = img["src"]
-            filename = get_name_from_url(img_src)
-            if img_src not in self.images and img_src:
-                img["src"] = filename
-                self.images[img_src] = filename
+            except KeyError:
+                continue
+            else:
+                if img_src.startswith("/"):
+                    img_src = urljoin(BASE_URL, img_src)
+                filename = get_name_from_url(img_src)
+                if img_src not in images_urls and img_src:
+                    img["src"] = filename
+                    images_urls[img_src] = filename
+        return images_urls
 
     def video_nodes(self, base_path, content):
         videos_url = self.get_videos_urls(content)
@@ -297,10 +329,14 @@ class Chapter:
         with html_writer.HTMLWriter(filepath, "w") as zipper:
             zipper.write_index_contents(content)
 
-    #def write_contents(self, filepath_index, filename, content, directory="files"):
-    #    with html_writer.HTMLWriter(filepath_index, "a") as zipper:
-    #        content = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="../css/styles.css"></head><body>{}<script src="../js/scripts.js"></script></body></html>'.format(content)
-    #        zipper.write_contents(filename, content, directory=directory)
+    def write_images(self, filepath, content):
+        images = self.get_images(content)
+        with html_writer.HTMLWriter(filepath, "a") as zipper:
+            for img_src, img_filename in images.items():
+                try:
+                    zipper.write_url(img_src, img_filename, directory=".")
+                except requests.exceptions.HTTPError:
+                    pass
 
     def write_css_js(self, filepath):
         with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
@@ -311,21 +347,30 @@ class Chapter:
             content = f.read()
             zipper.write_contents("scripts.js", content, directory="js/")
         
+    def write_mathjax(self, filepath):
+        script_tag = self.page.find(lambda tag: tag.name == "script" and tag.attrs.get("src", "").find("MathJax.js") != -1)
+        filepath_js = "chefdata/MathJax.js"
+        if not if_file_exists(filepath_js) and script_tag:
+            try:
+                r = requests.get(script_tag["src"])
+                with open(filepath_js, "wb") as f:
+                    f.write(r.content)
+            except KeyError:
+                pass
+
+        with html_writer.HTMLWriter(filepath, "a") as zipper, open(filepath_js) as f:
+            content = f.read()
+            zipper.write_contents("MathJax.js", content, directory="js/")
+
     def to_file(self, base_path):
         self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        mathjax_scripts = self.mathjax()
         body = self.clean(self.body())
-        self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script></body></html>'.format(body))
+        self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
+        self.write_images(self.filepath, body)
         self.write_css_js(self.filepath)
-        #for i, item in enumerate(self.items.values()):
-        #    self.write_images(filepath, item["content"])
-        #    file_nodes = self.write_pdfs(base_path, item["content"])
-        #    video_nodes = self.write_video(base_path, item["content"])
-        #    self.pager(item["content"], i)
-        #    self.clean_content(item["content"])
-        #    content = '<div class="sidebar"><a class="sidebar-link toggle-sidebar-button" href="javascript:void(0)" onclick="javascript:toggleNavMenu();">&#9776;</a>'+\
-        #    self.build_index(directory="./") +"</div>"+\
-        #    '<div class="main-content-with-sidebar">'+str(item["content"])+'</div>'
-        #    self.write_contents(filepath, item["filename"], content)
+        self.write_mathjax(self.filepath)
+        self.mathjax_dependences(self.filepath)
 
     def to_node(self):
         return dict(
