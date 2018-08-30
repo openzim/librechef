@@ -20,7 +20,10 @@ from ricecooker.classes.licenses import get_license
 from ricecooker.chefs import JsonTreeChef
 from ricecooker.utils import downloader, html_writer
 from ricecooker.utils.caching import CacheForeverHeuristic, FileCache, CacheControlAdapter
+from ricecooker.utils.html import download_file
 from ricecooker.utils.jsontrees import write_tree_to_json_tree, SUBTITLES_FILE
+from ricecooker.utils.zip import create_predictable_zip
+import tempfile
 import time
 from urllib.error import URLError
 from urllib.parse import urljoin
@@ -102,11 +105,11 @@ class Collection:
         self.title = title
         self.source_id = link
         self.collection = {
-            #CourseLibreTexts.title: CourseLibreTexts,
+            CourseLibreTexts.title: CourseLibreTexts,
             #TextBooksTextMaps.title: TextBooksTextMaps,
-            #HomeworkExercices.title: HomeworkExercices,
-            #VisualizationPhEt.title: VisualizationPhEt,
-            #Reference.title: Reference,
+            HomeworkExercices.title: HomeworkExercices,
+            VisualizationPhEt.title: VisualizationPhEt,
+            Reference.title: Reference,
             DemosTechniquesExp.title: DemosTechniquesExp
         }
 
@@ -227,13 +230,19 @@ class VisualizationPhEt(Topic):
     title = "Visualizations"
 
     def units(self):
-        for content_link in self:
-            url = content_link.attrs.get("href")
-            text_book = TextBooksTextMapsCategory(content_link.text, url)
-            text_book.populate_thumbnails()
-            text_book.thumbnail = self.thumbnails_links.get(url, None)
-            text_book.courses()
-            self.tree_nodes[text_book.source_id] = text_book.to_node()
+        index_base_path = build_path([DATA_DIR, self.title])
+        index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
+        if len(index_links) == 0:
+            index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
+
+        for chapter_link in index_links:
+            if chapter_link.text == "PhET Simulations":
+                course_index = CourseIndex(chapter_link.text, chapter_link.attrs.get("href", ""))
+                course_index.description = chapter_link.attrs.get("title")
+                #course_index.thumbnail = self.thumbnails_links.get(url, None)
+                path = [DATA_DIR, chapter_link.text]
+                course_index.index(build_path(path))
+                self.tree_nodes[course_index.source_id] = course_index.to_node()
     
 
 class DemosTechniquesExp(Topic):
@@ -404,6 +413,7 @@ class CourseIndex(object):
                         chapter.to_file(chapter_basepath)
                         node = chapter.to_node()
                         self.tree_nodes[chapter.source_id] = node
+            #break
 
     def to_node(self):
         return dict(
@@ -585,6 +595,19 @@ class Chapter(AgendaOrFlatPage):
                     video_nodes.append(node)
         return video_nodes
 
+    def build_phet_nodes(self, base_path, content):
+        phet_urls = self.get_phet_simulations(content)
+        base_path = build_path([DATA_DIR, "phet"])
+        phet_nodes = []
+        for phet_url in phet_urls:
+            phet = PhetResource(self.title, phet_url, lang=self.lang)
+            phet.description = None
+            phet.download(download=True, base_path=base_path)
+            node = phet.to_node()
+            if node is not None:
+                phet_nodes.append(node)
+        return phet_nodes
+
     def get_videos_urls(self, content):
         urls = set([])
         video_urls = content.find_all(lambda tag: tag.name == "a" and tag.attrs.get("href", "").find("youtube") != -1 or tag.attrs.get("href", "").find("youtu.be") != -1 or tag.text.lower() == "youtube")
@@ -604,6 +627,13 @@ class Chapter(AgendaOrFlatPage):
         pdf_urls = content.findAll(lambda tag: tag.name == "a" and tag.attrs.get("href", "").endswith(".pdf"))
         for pdf_url in pdf_urls:
             urls.add(pdf_url.get("href", ""))
+        return urls
+
+    def get_phet_simulations(self, content):
+        urls = set([])
+        phet_urls = content.findAll(lambda tag: tag.name == "iframe" and tag.attrs.get("src", "").find("phet.colorado.edu") != -1)
+        for phet_url in phet_urls:
+            urls.add(phet_url.get("src", ""))
         return urls
 
     def write_images(self, filepath, images):
@@ -649,6 +679,7 @@ class Chapter(AgendaOrFlatPage):
         mathjax_scripts = self.mathjax()
         self.video_nodes = self.build_video_nodes(base_path, self.body())
         self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
+        self.phet_nodes = self.build_phet_nodes(base_path, self.body())
         body = self.clean(self.body())
         images = self.to_local_images(body)
         self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
@@ -685,16 +716,23 @@ class Chapter(AgendaOrFlatPage):
             language=self.lang,
             license=LICENSE)
 
+    def add_to_node(self, node, nodes):
+        for node_ in nodes:
+            if node_ is not None:
+                node["children"].append(node_)
+
     def to_node(self):
-        if len(self.video_nodes) > 0 or len(self.pdf_nodes) > 0:
+        if len(self.phet_nodes) > 0:
+            if len(self.phet_nodes) > 1:
+                node = self.topic_node()
+                self.add_to_node(node, self.phet_nodes)
+            else:
+                node = self.phet_nodes[0]
+        elif len(self.video_nodes) > 0 or len(self.pdf_nodes) > 0:
             node = self.topic_node()
             node["children"].append(self.html_node())
-            for video_node in self.video_nodes:
-                if video_node is not None:
-                    node["children"].append(video_node)
-            for pdf_node in self.pdf_nodes:
-                if pdf_node is not None:
-                    node["children"].append(pdf_node)
+            self.add_to_node(node, self.video_nodes)
+            self.add_to_node(node, self.pdf_nodes)
         else:
             node = self.html_node()
         return node
@@ -846,6 +884,67 @@ class YouTubeResource(object):
                 license=LICENSE
             )
             return node
+
+
+class PhetResource(object):
+    def __init__(self, title, url, lang="en"):
+        self.source_id = url
+        self.title = title
+        self.lang = "en"
+        self.filepath = None
+        self.description = None
+
+    def download(self, download=True, base_path=None):
+        download_to = build_path([base_path])
+        dst = tempfile.mkdtemp()
+        download_file(
+            self.source_id,
+            dst,
+            filename="index.html",
+            request_fn=sess.get,
+            middleware_callbacks=[self.process_sim_html],
+        )
+        self.filepath = create_predictable_zip(dst)
+
+    ##https://github.com/learningequality/sushi-chef-phet/blob/master/chef.py
+    def process_sim_html(self, content, destpath, **kwargs):
+        """Remove various pieces of the code that make requests to online resources, to avoid using
+        bandwidth for users expecting a fully offline or zero-rated website."""
+
+        # remove "are we online" check
+        content = content.replace("check:function(){var t=this", "check:function(){return;var t=this")
+
+        # remove online links from "about" modal
+        content = content.replace("getLinks:function(", "getLinks:function(){return [];},doNothing:function(")
+
+        soup = BeautifulSoup(content, "html.parser")
+
+        for script in soup.find_all("script"):
+            # remove Google Analytics and online image bug requests
+            if "analytics.js" in str(script):
+                script.extract()
+            # remove menu options that link to online resources
+            if 'createTandem("phetWebsiteButton' in str(script):
+                script.string = re.compile('\{[^}]+createTandem\("phetWebsiteButton"\).*createTandem\("getUpdate"[^\}]*\},').sub("", script.string.replace("\n", " "))
+
+        return str(soup)
+
+    def to_node(self):
+        return dict(
+            kind=content_kinds.HTML5,
+            source_id=self.source_id,
+            title=self.title,
+            description=self.description,
+            thumbnail=None,
+            author="",
+            files=[dict(
+                file_type=content_kinds.HTML5,
+                path=self.filepath
+            )],
+            language=self.lang,
+            license= get_license(licenses.CC_BY, 
+                copyright_holder="PhET Interactive Simulations, University of Colorado Boulder").as_dict()
+        )
 
 
 class File(object):
