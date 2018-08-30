@@ -47,6 +47,7 @@ LOGGER.addHandler(__logging_handler)
 LOGGER.setLevel(logging.INFO)
 
 DOWNLOAD_VIDEOS = True
+DOWNLOAD_FILES = False
 
 sess = requests.Session()
 cache = FileCache('.webcache')
@@ -102,20 +103,24 @@ class Collection:
         self.source_id = link
         self.collection = {
             #CourseLibreTexts.title: CourseLibreTexts,
-            TextBooksTextMaps.title: TextBooksTextMaps
+            #TextBooksTextMaps.title: TextBooksTextMaps,
+            #HomeworkExercices.title: HomeworkExercices,
+            #VisualizationPhEt.title: VisualizationPhEt,
+            #Reference.title: Reference,
+            DemosTechniquesExp.title: DemosTechniquesExp
         }
 
     def to_node(self):
         try:
-            Course = self.collection[self.title]
+            Topic = self.collection[self.title]
         except KeyError:
             print("Not Found", self.title)
         else:
             LOGGER.info(self.title)
-            course = Course(self.source_id)
-            course.populate_thumbnails()
-            course.units()
-            return course.to_node()
+            topic = Topic(self.source_id)
+            topic.populate_thumbnails()
+            topic.units()
+            return topic.to_node()
 
 
 class Topic(object):
@@ -127,6 +132,7 @@ class Topic(object):
         self.thumbnails_links = {}
         self.description = ""
         self.soup = self.to_soup()
+        LOGGER.info("- " + self.title)
 
     def to_soup(self):
         document = download(self.source_id)
@@ -180,11 +186,70 @@ class TextBooksTextMaps(Topic):
             url = content_link.attrs.get("href")
             text_book = TextBooksTextMapsCategory(content_link.text, url)
             text_book.populate_thumbnails()
-            text_book.thumbnail = self.thumbnails_links[url]
+            text_book.thumbnail = self.thumbnails_links.get(url, None)
             text_book.courses()
             self.tree_nodes[text_book.source_id] = text_book.to_node()
-            break
 
+
+class HomeworkExercices(Topic):
+    title = "Homework Exercises"
+
+    def populate_thumbnails(self):
+        self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
+
+    def units(self):
+        for content_link in self:
+            url = content_link.attrs.get("href")
+            text_book = TextBooksTextMapsCategory(content_link.text, url)
+            text_book.populate_thumbnails()
+            text_book.thumbnail = self.thumbnails_links.get(url, None)
+            text_book.courses()
+            self.tree_nodes[text_book.source_id] = text_book.to_node()
+
+
+class Reference(Topic):
+    title = "Reference"
+
+    def units(self):
+        index_base_path = build_path([DATA_DIR, self.title])
+        if self.soup:
+            query = QueryPage(self.soup)
+            course_body = query.body()
+            if course_body is not None:
+                for chapter_title in course_body.find_all("a"):
+                    chapter = Chapter(chapter_title.text, chapter_title.attrs.get("href", ""))
+                    chapter.to_file(index_base_path)
+                    node = chapter.to_node()
+                    self.tree_nodes[chapter.source_id] = node
+
+
+class VisualizationPhEt(Topic):
+    title = "Visualizations"
+
+    def units(self):
+        for content_link in self:
+            url = content_link.attrs.get("href")
+            text_book = TextBooksTextMapsCategory(content_link.text, url)
+            text_book.populate_thumbnails()
+            text_book.thumbnail = self.thumbnails_links.get(url, None)
+            text_book.courses()
+            self.tree_nodes[text_book.source_id] = text_book.to_node()
+    
+
+class DemosTechniquesExp(Topic):
+    title = "Demos, Techniques, and Experiments"
+
+    def units(self):
+        index_base_path = build_path([DATA_DIR, self.title])
+        index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
+        if len(index_links) == 0:
+            index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
+
+        for chapter_link in index_links:
+            chapter = Chapter(chapter_link.text, chapter_link.attrs.get("href", ""))
+            chapter.to_file(index_base_path)
+            self.tree_nodes[chapter.source_id] = chapter.to_node()
+    
 
 class TextBooksTextMapsCategory(object):
     def __init__(self, title, url):
@@ -194,6 +259,7 @@ class TextBooksTextMapsCategory(object):
         self.tree_nodes = OrderedDict()
         self.thumbnails_links = {}
         self.soup = self.to_soup()
+        LOGGER.info("--- " + self.title)
 
     def to_soup(self):
         document = download(self.source_id)
@@ -216,11 +282,12 @@ class TextBooksTextMapsCategory(object):
             url = link.attrs.get("href")
             course_index = CourseIndex(link.text, url)
             course_index.description = link.attrs.get("title")
-            course_index.thumbnail = self.thumbnails_links[url]
+            course_index.thumbnail = self.thumbnails_links.get(url, None)
             path = [DATA_DIR, link.text]
             course_index.index(build_path(path))
             self.tree_nodes[course_index.source_id] = course_index.to_node()
-            break
+            #break
+        ## CHAPTER INSIDE
 
     def to_node(self):
         return dict(
@@ -237,28 +304,34 @@ class TextBooksTextMapsCategory(object):
         
 
 def thumbnails_links(soup, tag, class_):
-    courses_list = soup.find_all(tag, class_=class_)
-    thumnails = {}
-    for course_li in courses_list:
-        link = course_li.find("a").get("href")
-        img = course_li.find("img")
-        if img is not None:
-            thumnails[link] = img["src"]
-    return thumnails
+    if soup is not None:
+        courses_list = soup.find_all(tag, class_=class_)
+        thumnails = {}
+        for course_li in courses_list:
+            link = course_li.find("a").get("href")
+            img = course_li.find("img")
+            if img is not None:
+                thumnails[link] = img["src"]
+        return thumnails
 
 
 def save_thumbnail(url, title):
     import imghdr
     from io import BytesIO
-    r = requests.get(url)
-    img_buffer = BytesIO(r.content)
-    img_ext = imghdr.what(img_buffer)        
-    filename = "{}.{}".format(title, img_ext)
-    base_dir = build_path([DATA_DIR, "thumbnails"])
-    filepath = os.path.join(base_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(img_buffer.read())
-    return filepath
+    try:
+        r = requests.get(url)
+    except:
+        return None
+    else:
+        img_buffer = BytesIO(r.content)
+        img_ext = imghdr.what(img_buffer)
+        if img_ext != "gif":
+            filename = "{}.{}".format(title, img_ext)
+            base_dir = build_path([DATA_DIR, "thumbnails"])
+            filepath = os.path.join(base_dir, filename)
+            with open(filepath, "wb") as f:
+                f.write(img_buffer.read())
+            return filepath
 
 
 
@@ -272,6 +345,7 @@ class CourseIndex(object):
         self.soup = self.to_soup()
         self.author()
         self._thumbnail = None
+        LOGGER.info("----- " + self.title)
 
     def to_soup(self):
         document = download(self.source_id)
@@ -313,22 +387,13 @@ class CourseIndex(object):
                 course_body = query.body()
                 if course_body is not None:
                     course = Course(course_link.text, course_link_href, self.author())
-                    course.thumbnail = thumbnails[course_link_href]
+                    course.thumbnail = thumbnails.get(course_link_href, None)
                     for chapter_title in course_body.find_all("a"):
                         chapter = Chapter(chapter_title.text, chapter_title.attrs.get("href", ""))
-                        video_nodes = chapter.video_nodes(chapter_basepath, chapter.body())
                         chapter.to_file(chapter_basepath)
-                        if len(video_nodes) > 0:
-                            node = chapter.topic_node()
-                            node["children"].append(chapter.to_node())
-                            for video_node in video_nodes:
-                                node["children"].append(video_node)
-                        else:
-                            node = chapter.to_node()
+                        node = chapter.to_node()
                         course.add_node(node)
-                        #break
                     self.tree_nodes[course.source_id] = course.to_node()
-                    #break
                 else:
                     if course_link.text.strip() == "Agenda":
                         agenda = AgendaOrFlatPage(course_link.text, course_link_href)
@@ -336,15 +401,8 @@ class CourseIndex(object):
                         self.tree_nodes[agenda.source_id] = agenda.to_node()
                     else:
                         chapter = Chapter(course_link.text, course_link.attrs.get("href", ""))
-                        video_nodes = chapter.video_nodes(chapter_basepath, chapter.body())
                         chapter.to_file(chapter_basepath)
-                        if len(video_nodes) > 0:
-                            node = chapter.topic_node()
-                            node["children"].append(chapter.to_node())
-                            for video_node in video_nodes:
-                                node["children"].append(video_node)
-                        else:
-                            node = chapter.to_node()
+                        node = chapter.to_node()
                         self.tree_nodes[chapter.source_id] = node
 
     def to_node(self):
@@ -369,7 +427,7 @@ class Course(object):
         self.lang = "en"
         self._thumbnail = None
         self.tree_nodes = OrderedDict()
-        LOGGER.info("-- " + self.title)
+        LOGGER.info("------- " + self.title)
 
     @property
     def thumbnail(self):
@@ -399,11 +457,11 @@ class Course(object):
 class AgendaOrFlatPage(object):
     def __init__(self, title, url):
         self.source_id = url
-        self.title = title
+        self.title = title.replace("/", "_")
         self.page = self.to_soup()
         self.lang = "en"
         self.filepath = None
-        LOGGER.info("-- " + self.title)
+        LOGGER.info("--- " + self.title)
 
     def write_css_js(self, filepath):
         with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
@@ -457,12 +515,14 @@ class AgendaOrFlatPage(object):
 
 class Chapter(AgendaOrFlatPage):
     def __init__(self, title, url):
-        self.title = title
+        self.title = title.replace("/", "_")
         self.source_id = url
         self.page = self.to_soup()
         self.lang = "en"
         self.filepath = None
-        LOGGER.info("---- " + self.title)
+        self.video_nodes = None
+        self.pdf_nodes = None
+        LOGGER.info("--------- " + self.title)
 
     def mathjax(self):
         scripts = self.page.find_all("script", type="text/x-mathjax-config")
@@ -512,7 +572,7 @@ class Chapter(AgendaOrFlatPage):
                     images_urls[img_src] = filename
         return images_urls
 
-    def video_nodes(self, base_path, content):
+    def build_video_nodes(self, base_path, content):
         videos_url = self.get_videos_urls(content)
         base_path = build_path([DATA_DIR, "videos"])
         video_nodes = []
@@ -520,7 +580,9 @@ class Chapter(AgendaOrFlatPage):
             if YouTubeResource.is_youtube(video_url):
                 video = YouTubeResource(video_url, lang=self.lang)
                 video.download(download=DOWNLOAD_VIDEOS, base_path=base_path)
-                video_nodes.append(video.to_node())
+                node = video.to_node()
+                if node is not None:
+                    video_nodes.append(node)
         return video_nodes
 
     def get_videos_urls(self, content):
@@ -537,17 +599,36 @@ class Chapter(AgendaOrFlatPage):
 
         return urls
 
+    def get_pdfs_urls(self, content):
+        urls = set([])
+        pdf_urls = content.findAll(lambda tag: tag.name == "a" and tag.attrs.get("href", "").endswith(".pdf"))
+        for pdf_url in pdf_urls:
+            urls.add(pdf_url.get("href", ""))
+        return urls
+
     def write_images(self, filepath, images):
         with html_writer.HTMLWriter(filepath, "a") as zipper:
             for img_src, img_filename in images.items():
                 try:
-                    if img_src.startswith("data:image/png;base64,"):
+                    if img_src.startswith("data:image/"):
                         pass
                     else:
                         zipper.write_url(img_src, img_filename, directory="")
                 except requests.exceptions.HTTPError:
                     pass
         
+    def build_pdfs_nodes(self, base_path, content):
+        pdfs_urls = self.get_pdfs_urls(content)
+        base_path = build_path([base_path, 'pdfs'])
+        pdf_nodes = []
+        for pdf_url in pdfs_urls:
+            pdf_file = File(pdf_url, lang=self.lang, name=self.title)
+            pdf_file.download(download=DOWNLOAD_FILES, base_path=base_path)
+            node = pdf_file.to_node()
+            if node is not None:
+                pdf_nodes.append(node)
+        return pdf_nodes
+
     def write_mathjax(self, filepath):
         script_tag = self.page.find(lambda tag: tag.name == "script" and tag.attrs.get("src", "").find("MathJax.js") != -1)
         filepath_js = "chefdata/MathJax.js"
@@ -566,6 +647,8 @@ class Chapter(AgendaOrFlatPage):
     def to_file(self, base_path):
         self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
         mathjax_scripts = self.mathjax()
+        self.video_nodes = self.build_video_nodes(base_path, self.body())
+        self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
         body = self.clean(self.body())
         images = self.to_local_images(body)
         self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
@@ -587,7 +670,7 @@ class Chapter(AgendaOrFlatPage):
             children=[]
         )
 
-    def to_node(self):
+    def html_node(self):
         return dict(
             kind=content_kinds.HTML5,
             source_id=self.source_id,
@@ -601,6 +684,20 @@ class Chapter(AgendaOrFlatPage):
             )],
             language=self.lang,
             license=LICENSE)
+
+    def to_node(self):
+        if len(self.video_nodes) > 0 or len(self.pdf_nodes) > 0:
+            node = self.topic_node()
+            node["children"].append(self.html_node())
+            for video_node in self.video_nodes:
+                if video_node is not None:
+                    node["children"].append(video_node)
+            for pdf_node in self.pdf_nodes:
+                if pdf_node is not None:
+                    node["children"].append(pdf_node)
+        else:
+            node = self.html_node()
+        return node
 
 
 class QueryPage:
@@ -628,8 +725,8 @@ class QueryPage:
 class YouTubeResource(object):
     def __init__(self, source_id, name=None, type_name="Youtube", lang="en", 
             embeded=False, section_title=None, description=None):
-        LOGGER.info("    + Resource Type: {}".format(type_name))
-        LOGGER.info("    - URL: {}".format(source_id))
+        LOGGER.info("     + Resource Type: {}".format(type_name))
+        LOGGER.info("     - URL: {}".format(source_id))
         self.filename = None
         self.type_name = type_name
         self.filepath = None
@@ -748,6 +845,54 @@ class YouTubeResource(object):
                 language=self.lang,
                 license=LICENSE
             )
+            return node
+
+
+class File(object):
+    def __init__(self, source_id, lang="en", name=None):
+        self.filename = get_name_from_url(source_id)
+        self.source_id = urljoin(BASE_URL, source_id) if source_id.startswith("/") else source_id
+        self.filepath = None
+        self.lang = lang
+        self.name = "{}_{}".format(name, self.filename)
+
+    def download(self, download=True, base_path=None):
+        try:
+            if download is False:
+                return
+            response = sess.get(self.source_id)
+            content_type = response.headers.get('content-type')
+            if 'application/pdf' in content_type:
+                self.filepath = os.path.join(base_path, self.filename)
+                with open(self.filepath, 'wb') as f:
+                    for chunk in response.iter_content(10000):
+                        f.write(chunk)
+                LOGGER.info("    - Get file: {}, node name: {}".format(self.filename, self.name))
+        except requests.exceptions.HTTPError as e:
+            LOGGER.info("Error: {}".format(e))
+        except requests.exceptions.ConnectionError:
+            ### this is a weird error, may be it's raised when the webpage
+            ### is slow to respond requested resources
+            LOGGER.info("Connection error, the resource will be scraped in 5s...")
+            time.sleep(3)
+        except requests.exceptions.ReadTimeout as e:
+            LOGGER.info("Error: {}".format(e))
+        except requests.exceptions.TooManyRedirects as e:
+            LOGGER.info("Error: {}".format(e))
+
+    def to_node(self):
+        if self.filepath is not None:
+            node = dict(
+                kind=content_kinds.DOCUMENT,
+                source_id=self.source_id,
+                title=self.name,
+                description='',
+                files=[dict(
+                    file_type=content_kinds.DOCUMENT,
+                    path=self.filepath
+                )],
+                language=self.lang,
+                license=LICENSE)
             return node
 
 
