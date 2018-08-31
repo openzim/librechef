@@ -50,7 +50,7 @@ LOGGER.addHandler(__logging_handler)
 LOGGER.setLevel(logging.INFO)
 
 DOWNLOAD_VIDEOS = True
-DOWNLOAD_FILES = False
+DOWNLOAD_FILES = True
 
 sess = requests.Session()
 cache = FileCache('.webcache')
@@ -106,7 +106,7 @@ class Collection:
         self.source_id = link
         self.collection = {
             CourseLibreTexts.title: CourseLibreTexts,
-            #TextBooksTextMaps.title: TextBooksTextMaps,
+            TextBooksTextMaps.title: TextBooksTextMaps,
             HomeworkExercices.title: HomeworkExercices,
             VisualizationPhEt.title: VisualizationPhEt,
             Reference.title: Reference,
@@ -288,13 +288,21 @@ class TextBooksTextMapsCategory(object):
 
     def courses(self):
         for link in Browser(self.source_id).run():
+            #if link.text != "11: Dimensions":
+            #    continue
             url = link.attrs.get("href")
             course_index = CourseIndex(link.text, url)
             course_index.description = link.attrs.get("title")
             course_index.thumbnail = self.thumbnails_links.get(url, None)
             path = [DATA_DIR, link.text]
-            course_index.index(build_path(path))
-            self.tree_nodes[course_index.source_id] = course_index.to_node()
+            base_path = build_path(path)
+            course_index.index(base_path)
+            node = course_index.to_node()
+            if len(node["children"]) == 0:
+                chapter = Chapter(link.text, link.get("href", ""))
+                chapter.to_file(base_path)
+                node = chapter.to_node()
+            self.tree_nodes[course_index.source_id] = node
             #break
         ## CHAPTER INSIDE
 
@@ -382,7 +390,10 @@ class CourseIndex(object):
         if len(courses_link) == 0:
             query = QueryPage(self.soup)
             body = query.body()
-            courses_link = body.find_all("a")
+            if body is not None:
+                courses_link = body.find_all("a")
+            else:
+                return
 
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
@@ -468,7 +479,7 @@ class AgendaOrFlatPage(object):
     def __init__(self, title, url):
         self.source_id = url
         self.title = title.replace("/", "_")
-        self.page = self.to_soup()
+        self.soup = self.to_soup()
         self.lang = "en"
         self.filepath = None
         LOGGER.info("--- " + self.title)
@@ -483,7 +494,7 @@ class AgendaOrFlatPage(object):
             zipper.write_contents("scripts.js", content, directory="js/")
 
     def body(self):
-        return self.page.find("section", class_="mt-content-container")        
+        return self.soup.find("section", class_="mt-content-container")        
 
     def clean(self, content):
         link_to_text(content)
@@ -527,15 +538,21 @@ class Chapter(AgendaOrFlatPage):
     def __init__(self, title, url):
         self.title = title.replace("/", "_")
         self.source_id = url
-        self.page = self.to_soup()
+        self.soup = self.to_soup()
         self.lang = "en"
         self.filepath = None
         self.video_nodes = None
         self.pdf_nodes = None
-        LOGGER.info("--------- " + self.title)
+        self.author = self.get_author()
+        LOGGER.info("--------- " + self.title)        
+
+    def get_author(self):
+        tag_a = self.soup.find(lambda tag: tag.name == "a" and tag.findParent("li", "mt-author-information"))
+        if tag_a is not None:
+            return tag_a.text
 
     def mathjax(self):
-        scripts = self.page.find_all("script", type="text/x-mathjax-config")
+        scripts = self.soup.find_all("script", type="text/x-mathjax-config")
         return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
@@ -660,7 +677,7 @@ class Chapter(AgendaOrFlatPage):
         return pdf_nodes
 
     def write_mathjax(self, filepath):
-        script_tag = self.page.find(lambda tag: tag.name == "script" and tag.attrs.get("src", "").find("MathJax.js") != -1)
+        script_tag = self.soup.find(lambda tag: tag.name == "script" and tag.attrs.get("src", "").find("MathJax.js") != -1)
         filepath_js = "chefdata/MathJax.js"
         if not if_file_exists(filepath_js) and script_tag:
             try:
@@ -708,7 +725,7 @@ class Chapter(AgendaOrFlatPage):
             title=self.title,
             description="",
             thumbnail=None,
-            author="",
+            author=self.author,
             files=[dict(
                 file_type=content_kinds.HTML5,
                 path=self.filepath
@@ -849,8 +866,8 @@ class YouTubeResource(object):
                 info = self.get_video_info(download_to=download_to, subtitles=False)
                 if info is not None:
                     LOGGER.info("    + Video resolution: {}x{}".format(info.get("width", ""), info.get("height", "")))
-                    if self. description is None:
-                        self.description = info["description"]
+                    if self.description is None:
+                        self.description = info.get("description", None)
                     self.filepath = os.path.join(download_to, "{}.mp4".format(info["id"]))
                     self.filename = info["title"]
                     if self.filepath is not None and os.stat(self.filepath).st_size == 0:
