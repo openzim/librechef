@@ -69,6 +69,31 @@ CHANNEL_THUMBNAIL = None                                    # Local path or url 
 
 # Additional constants
 ################################################################################
+"""
+This is the jerarchery in libretext.
+
+- Collection (CourseLibreText, TextBook, Homework)
+  - CategoryA 
+     * CategoryB (optional)
+       * Chapter (optional)
+       - Index
+         - Chapter
+
+- Collection (Reference, Demos)
+     - Index
+       - Chapter
+
+- Collection (VisualizationA)
+  - CategoryA
+     - CategoryB
+        - Visualization
+
+- Collection (VisualizationPhEt)
+  - CategoryA
+     - Index
+       - Visualization
+"""
+
 
 class Browser:
     def __init__(self, url):
