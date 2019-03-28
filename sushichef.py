@@ -36,8 +36,6 @@ from utils import link_to_text, remove_scripts
 import youtube_dl
 
 
-BASE_URL = "https://phys.libretexts.org/"
-
 DATA_DIR = "chefdata"
 COPYRIGHT_HOLDER = "CSU and Merlot"
 LICENSE = get_license(licenses.CC_BY_NC_SA, 
@@ -56,14 +54,14 @@ sess = requests.Session()
 cache = FileCache('.webcache')
 basic_adapter = CacheControlAdapter(cache=cache)
 forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=cache)
-sess.mount('http://', basic_adapter)
-sess.mount(BASE_URL, forever_adapter)
+#sess.mount('http://', basic_adapter)
+#sess.mount(BASE_URL, forever_adapter)
 
 # Run constants
 ################################################################################
 CHANNEL_NAME = "Libretext Open Educational Resource Library"              # Name of channel
-CHANNEL_SOURCE_ID = "sushi-chef-phys-libretext"    # Channel's unique id
-CHANNEL_DOMAIN = "https://phys.libretexts.org/"          # Who is providing the content
+CHANNEL_SOURCE_ID = "sushi-chef-{channel_name}-libretext"    # Channel's unique id
+CHANNEL_DOMAIN = ""          # Who is providing the content
 CHANNEL_LANGUAGE = "en"      # Language of channel
 CHANNEL_DESCRIPTION = None                                  # Description of the channel (optional)
 CHANNEL_THUMBNAIL = None                                    # Local path or url to image file (optional)
@@ -89,11 +87,30 @@ This is the jerarchery in libretext.
      - CategoryB
         - Visualization
 
-- Collection (VisualizationPhEt)
+- Collection (Ancillary Materials) 
   - CategoryA
+     * Category B
      - Index
        - Visualization
 """
+
+
+SUBJECTS = {
+    "phys": "https://phys.libretexts.org/",
+    "chem": "https://chem.libretexts.org/",
+    "bio": "https://bio.libretexts.org/",
+    "eng": "https://eng.libretexts.org/",
+    "math": "https://math.libretexts.org/"
+}
+
+
+SUBJECTS_THUMBS = {
+    "phys": "https://phys.libretexts.org/@api/deki/files/3289/libretexts_section_complete_phys350.png",
+    "chem": "https://chem.libretexts.org/@api/deki/files/85425/libretexts_section_complete_chem_sm_124.png",
+    "bio": "https://bio.libretexts.org/@api/deki/files/8208/libretexts_section_complete_bio_header.png",
+    "end": "https://eng.libretexts.org/@api/deki/files/1442/libretexts_section_complete_engineering_325.png",
+    "math": "https://math.libretexts.org/@api/deki/files/1742/libretexts_section_complete_math350_sigma.png"
+}
 
 
 class Browser:
@@ -133,6 +150,7 @@ class Collection:
             CourseLibreTexts.title: CourseLibreTexts,
             TextBooksTextMaps.title: TextBooksTextMaps,
             HomeworkExercices.title: HomeworkExercices,
+            Homework.title: Homework,
             VisualizationPhEt.title: VisualizationPhEt,
             Reference.title: Reference,
             DemosTechniquesExp.title: DemosTechniquesExp
@@ -140,6 +158,7 @@ class Collection:
 
     def to_node(self):
         try:
+            # print(self.collection.keys(), self.title)
             Topic = self.collection[self.title]
         except KeyError:
             print("Not Found", self.title)
@@ -190,7 +209,7 @@ class Topic(object):
 
 
 class CourseLibreTexts(Topic):
-    title = "Course LibreTexts"
+    title = "Campus Courses"#"Course LibreTexts"
 
     def units(self):
         for url in self:
@@ -203,7 +222,7 @@ class CourseLibreTexts(Topic):
 
 
 class TextBooksTextMaps(Topic):
-    title = "TextBooks & TextMaps"
+    title = "Bookshelves" #"TextBooks & TextMaps"
 
     def populate_thumbnails(self):
         self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
@@ -235,13 +254,17 @@ class HomeworkExercices(Topic):
             self.tree_nodes[text_book.source_id] = text_book.to_node()
 
 
+class Homework(HomeworkExercices):  # Alias for homework and exercices
+    title = "Homework"
+
+
 class Reference(Topic):
     title = "Reference"
 
     def units(self):
         index_base_path = build_path([DATA_DIR, self.title])
         if self.soup:
-            query = QueryPage(self.soup)
+            query = QueryPage(self.soup, self.source_id)
             course_body = query.body()
             if course_body is not None:
                 for chapter_title in course_body.find_all("a"):
@@ -252,7 +275,7 @@ class Reference(Topic):
 
 
 class VisualizationPhEt(Topic):
-    title = "Visualizations"
+    title = "Ancillary Materials"
 
     def units(self):
         index_base_path = build_path([DATA_DIR, self.title])
@@ -387,10 +410,11 @@ class CourseIndex(object):
         self.soup = self.to_soup()
         self.author()
         self._thumbnail = None
-        LOGGER.info("----- " + self.title)
+        LOGGER.info("----- Course Index title: " + self.title)
+        LOGGER.info("-----    url: " + self.source_id)
 
     def to_soup(self):
-        document = download(self.source_id)
+        document = download(self.source_id, loadjs=False)
         if document is not None:
             return BeautifulSoup(document, 'html5lib') #html5lib
 
@@ -413,22 +437,28 @@ class CourseIndex(object):
         if len(courses_link) == 0:
             courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
         if len(courses_link) == 0:
-            query = QueryPage(self.soup)
+            print("INDEX", self.source_id)
+            query = QueryPage(self.soup, self.source_id)
             body = query.body()
             if body is not None:
                 courses_link = body.find_all("a")
             else:
-                return
+                LOGGER.info("LAST CHANCE TO GET THE LINKS")
+                courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("div", class_="wiki-tree"))
+                if len(courses_link) == 0:
+                    return
+                else:
+                    LOGGER.info("OK")
 
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
-        index_base_path = build_path([base_path])
+        index_base_path = base_path  # build_path([base_path])
         for course_link in courses_link:
             course_link_href = course_link.attrs.get("href", "")
             document = download(course_link_href)
             chapter_basepath = build_path([index_base_path, course_link.text])
             if document is not None:
-                query = QueryPage(BeautifulSoup(document, 'html.parser'))
+                query = QueryPage(BeautifulSoup(document, 'html.parser'), course_link_href)
                 course_body = query.body()
                 if course_body is not None:
                     course = Course(course_link.text, course_link_href, self.author())
@@ -445,10 +475,17 @@ class CourseIndex(object):
                         agenda.to_file(chapter_basepath)
                         self.tree_nodes[agenda.source_id] = agenda.to_node()
                     else:
-                        chapter = Chapter(course_link.text, course_link.attrs.get("href", ""))
-                        chapter.to_file(chapter_basepath)
-                        node = chapter.to_node()
-                        self.tree_nodes[chapter.source_id] = node
+                        course_index = CourseIndex(course_link.text, course_link_href)
+                        course_index.index(build_path([base_path, course_link.text]))
+                        course_index_node = course_index.to_node()
+                        if len(course_index_node["children"]) == 0:
+                            chapter = Chapter(course_link.text, course_link_href)
+                            chapter.to_file(chapter_basepath)
+                            node = chapter.to_node()
+                            self.tree_nodes[chapter.source_id] = node
+                        else:
+                            self.tree_nodes[course_index.source_id] = course_index_node
+                        
             #break
 
     def to_node(self):
@@ -473,7 +510,8 @@ class Course(object):
         self.lang = "en"
         self._thumbnail = None
         self.tree_nodes = OrderedDict()
-        LOGGER.info("------- " + self.title)
+        LOGGER.info("------- Course: " + self.title)
+        LOGGER.info("-------   url: " + self.title)
 
     @property
     def thumbnail(self):
@@ -507,7 +545,8 @@ class AgendaOrFlatPage(object):
         self.soup = self.to_soup()
         self.lang = "en"
         self.filepath = None
-        LOGGER.info("--- " + self.title)
+        LOGGER.info("--- Agenda (Flat Page)" + self.title)
+        LOGGER.info("---   url" + self.url)
 
     def write_css_js(self, filepath):
         with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
@@ -569,7 +608,8 @@ class Chapter(AgendaOrFlatPage):
         self.video_nodes = None
         self.pdf_nodes = None
         self.author = self.get_author()
-        LOGGER.info("--------- " + self.title)        
+        LOGGER.info("--------- Chapter: " + self.title)
+        LOGGER.info("---------   url: " + self.source_id)
 
     def get_author(self):
         tag_a = self.soup.find(lambda tag: tag.name == "a" and tag.findParent("li", "mt-author-information"))
@@ -594,6 +634,7 @@ class Chapter(AgendaOrFlatPage):
             "extensions/TeX/autobold.js",
             "extensions/TeX/mhchem.js",
             "extensions/TeX/color.js", 
+            "extensions/TeX/boldsymbol.js",
             "extensions/TeX/cancel.js",
             "jax/output/HTML-CSS/jax.js",
             "jax/output/HTML-CSS/fonts/TeX/fontdata.js",
@@ -686,7 +727,8 @@ class Chapter(AgendaOrFlatPage):
                         pass
                     else:
                         zipper.write_url(img_src, img_filename, directory="")
-                except requests.exceptions.HTTPError:
+                except (requests.exceptions.HTTPError, requests.exceptions.ConnectTimeout,
+                        requests.exceptions.ConnectionError):
                     pass
         
     def build_pdfs_nodes(self, base_path, content):
@@ -781,9 +823,10 @@ class Chapter(AgendaOrFlatPage):
 
 
 class QueryPage:
-    def __init__(self, soup):
+    def __init__(self, soup, source_id):
         self.soup = soup
         self.get_id()
+        self.source_id = source_id
 
     def get_id(self):
         query_param = self.soup.find("div", class_="mt-guide-tabs-container")
@@ -799,7 +842,12 @@ class QueryPage:
         if self.page_id is not None and self.guid is not None:
             url = "{}@api/deki/pages/=Template%253AMindTouch%252FIDF3%252FViews%252FTopic_hierarchy/contents?dream.out.format=json&origin=mt-web&pageid={}&draft=false&guid={}".format(BASE_URL, self.page_id, self.guid)
             json = requests.get(url).json()
-            return BeautifulSoup(json["body"], 'html.parser')
+            #print(BASE_URL, self.page_id, self.guid)
+            #print(self.source_id)
+            #print(json)
+            body = json.get("body", None)
+            if body is not None:
+                return BeautifulSoup(body, 'html.parser')
 
 
 class YouTubeResource(object):
@@ -857,7 +905,7 @@ class YouTubeResource(object):
                 'quiet': False,
                 'format': "bestvideo[height<={maxheight}][ext=mp4]+bestaudio[ext=m4a]/best[height<={maxheight}][ext=mp4]".format(maxheight='480'),
                 'outtmpl': '{}/%(id)s'.format(download_to),
-                'noplaylist': False
+                'noplaylist': True
             }
 
         with youtube_dl.YoutubeDL(ydl_options) as ydl:
@@ -886,7 +934,7 @@ class YouTubeResource(object):
 
     def download(self, download=True, base_path=None):
         download_to = build_path([base_path])
-        for i in range(4):
+        for i in range(2):
             try:
                 info = self.get_video_info(download_to=download_to, subtitles=False)
                 if info is not None:
@@ -1037,11 +1085,11 @@ class File(object):
             return node
 
 
-def download(source_id):
+def download(source_id, loadjs=False):
     tries = 0
     while tries < 4:
         try:
-            document = downloader.read(source_id, loadjs=False, session=sess)
+            document = downloader.read(source_id, loadjs=loadjs, session=sess)
         except requests.exceptions.HTTPError as e:
             LOGGER.info("Error: {}".format(e))
         except requests.exceptions.ConnectionError:
@@ -1081,21 +1129,19 @@ def get_index_range(only_pages):
 
 # The chef subclass
 ################################################################################
-class PhysLibreTextsChef(JsonTreeChef):
-    HOSTNAME = BASE_URL
+class LibreTextsChef(JsonTreeChef):
     TREES_DATA_DIR = os.path.join(DATA_DIR, 'trees')
-    SCRAPING_STAGE_OUTPUT_TPL = 'ricecooker_json_tree.json'
+    SCRAPING_STAGE_OUTPUT_TPL = 'ricecooker_{subject}_json_tree.json'
     THUMBNAIL = ""
 
     def __init__(self):
-        build_path([PhysLibreTextsChef.TREES_DATA_DIR])
-        self.scrape_stage = os.path.join(PhysLibreTextsChef.TREES_DATA_DIR, 
-                                PhysLibreTextsChef.SCRAPING_STAGE_OUTPUT_TPL)
-        super(PhysLibreTextsChef, self).__init__()
+        build_path([LibreTextsChef.TREES_DATA_DIR])
+        super(LibreTextsChef, self).__init__()
 
     def pre_run(self, args, options):
         self.download_css_js()
-        self.write_tree_to_json(self.scrape(args, options))
+        channel_tree = self.scrape(args, options)
+        self.write_tree_to_json(channel_tree)
 
     def download_css_js(self):
         r = requests.get("https://raw.githubusercontent.com/learningequality/html-app-starter/master/css/styles.css")
@@ -1110,24 +1156,38 @@ class PhysLibreTextsChef(JsonTreeChef):
         only_pages = options.get('--only-pages', None)
         only_videos = options.get('--only-videos', None)
         download_video = options.get('--download-video', "1")
+        subject = options.get('--subject', "phys")
+        self.RICECOOKER_JSON_TREE = LibreTextsChef.SCRAPING_STAGE_OUTPUT_TPL.format(subject=subject)
+        self.scrape_stage = os.path.join(LibreTextsChef.TREES_DATA_DIR, 
+            self.RICECOOKER_JSON_TREE)
 
+        LOGGER.info("Scraping {}".format(SUBJECTS[subject]))
         if int(download_video) == 0:
             global DOWNLOAD_VIDEOS
             DOWNLOAD_VIDEOS = False
 
         global channel_tree
         channel_tree = dict(
-                source_domain=PhysLibreTextsChef.HOSTNAME,
-                source_id=BASE_URL,
+                source_domain=SUBJECTS[subject],
+                source_id=CHANNEL_SOURCE_ID.format(channel_name=subject),
                 title=CHANNEL_NAME,
                 description="""Offers a “living library,” curated by students, faculty, and outside experts, of open-source textbooks and curricular materials to support popular secondary and college-level academic subjects, primarily in mathematics and sciences."""
 [:400], #400 UPPER LIMIT characters allowed 
-                thumbnail=None,
+                thumbnail=SUBJECTS_THUMBS[subject],
                 author=AUTHOR,
                 language=CHANNEL_LANGUAGE,
                 children=[],
                 license=LICENSE,
             )
+
+        global BASE_URL
+        BASE_URL = SUBJECTS[subject]
+
+        #base_path = build_path([DATA_DIR, "test"])
+        #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
+        #c.index(base_path)
+        #channel_tree["children"].append(c.to_node())
+        #return channel_tree
 
         p_from_i, p_to_i = get_index_range(only_pages)
         v_from_i, v_to_i = get_index_range(only_videos)
@@ -1146,5 +1206,5 @@ class PhysLibreTextsChef(JsonTreeChef):
 # CLI
 ################################################################################
 if __name__ == '__main__':
-    chef = PhysLibreTextsChef()
+    chef = LibreTextsChef()
     chef.main()
