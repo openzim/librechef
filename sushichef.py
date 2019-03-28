@@ -149,12 +149,12 @@ class Collection:
         self.source_id = link
         self.collection = {
             CourseLibreTexts.title: CourseLibreTexts,
-            TextBooksTextMaps.title: TextBooksTextMaps,
-            HomeworkExercices.title: HomeworkExercices,
-            Homework.title: Homework,
-            VisualizationPhEt.title: VisualizationPhEt,
-            Reference.title: Reference,
-            DemosTechniquesExp.title: DemosTechniquesExp
+            #TextBooksTextMaps.title: TextBooksTextMaps,
+            #HomeworkExercices.title: HomeworkExercices,
+            #Homework.title: Homework,
+            #VisualizationPhEt.title: VisualizationPhEt,
+            #Reference.title: Reference,
+            #DemosTechniquesExp.title: DemosTechniquesExp
         }
 
     def to_node(self):
@@ -172,7 +172,9 @@ class Collection:
 
 
 class Topic(object):
-    def __init__(self, url):
+    def __init__(self, url, title=None):
+        if title is not None:
+            self.title = title
         self.source_id = url
         self.urls = Browser(self.source_id).run()
         self.lang = "en"
@@ -214,12 +216,18 @@ class CourseLibreTexts(Topic):
 
     def units(self):
         for url in self:
-            for link in Browser(url.attrs.get("href")).run():
+            #print(url, self.title, url.text)
+            college = Topic(url.attrs.get("href"), title=url.text)
+            for link in college:  #Browser(url.attrs.get("href")).run():
+                #print(link.attrs.get("href"), "++++++++++")
+                #continue
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
                 path = [DATA_DIR, DATA_DIR_SUBJECT, link.text]
                 course_index.index(build_path(path))
-                self.tree_nodes[course_index.source_id] = course_index.to_node()
+                college.tree_nodes[course_index.source_id] = course_index.to_node()
+            self.tree_nodes[college.source_id] = college.to_node()
+            break
 
 
 class TextBooksTextMaps(Topic):
@@ -623,7 +631,7 @@ class Chapter(AgendaOrFlatPage):
         return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../../MathJax/"
+        mathajax_path = "../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
@@ -702,7 +710,7 @@ class Chapter(AgendaOrFlatPage):
 
         for iframe in content.find_all("iframe"):
             url = iframe["src"]
-            if YouTubeResource.is_youtube(url) and not YouTubeResource.is_channel(video_url):
+            if YouTubeResource.is_youtube(url) and not YouTubeResource.is_channel(url):
                 urls.add(YouTubeResource.transform_embed(url))
 
         return urls
@@ -725,10 +733,11 @@ class Chapter(AgendaOrFlatPage):
         with html_writer.HTMLWriter(filepath, "a") as zipper:
             for img_src, img_filename in images.items():
                 try:
-                    if img_src.startswith("data:image/"):
+                    if img_src.startswith("data:image/") or img_src.startswith("file://"):
                         pass
                     else:
-                        zipper.write_url(img_src, img_filename, directory="")
+                        # zipper.write_url(img_src, img_filename, directory="")
+                        zipper.write_contents(img_filename, downloader.read(img_src, timeout=5, session=sess), directory="")
                 except (requests.exceptions.HTTPError, requests.exceptions.ConnectTimeout,
                         requests.exceptions.ConnectionError, FileNotFoundError):
                     pass
@@ -844,9 +853,6 @@ class QueryPage:
         if self.page_id is not None and self.guid is not None:
             url = "{}@api/deki/pages/=Template%253AMindTouch%252FIDF3%252FViews%252FTopic_hierarchy/contents?dream.out.format=json&origin=mt-web&pageid={}&draft=false&guid={}".format(BASE_URL, self.page_id, self.guid)
             json = requests.get(url).json()
-            #print(BASE_URL, self.page_id, self.guid)
-            #print(self.source_id)
-            #print(json)
             body = json.get("body", None)
             if body is not None:
                 return BeautifulSoup(body, 'html.parser')
@@ -1212,7 +1218,9 @@ def test(channel_tree):
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
     #c.index(base_path)
     #channel_tree["children"].append(c.to_node())
-    c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
+    c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
     return channel_tree
