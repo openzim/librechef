@@ -37,6 +37,7 @@ import youtube_dl
 
 
 DATA_DIR = "chefdata"
+DATA_DIR_SUBJECT = ""
 COPYRIGHT_HOLDER = "CSU and Merlot"
 LICENSE = get_license(licenses.CC_BY_NC_SA, 
         copyright_holder=COPYRIGHT_HOLDER).as_dict()
@@ -216,7 +217,7 @@ class CourseLibreTexts(Topic):
             for link in Browser(url.attrs.get("href")).run():
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
-                path = [DATA_DIR, link.text]
+                path = [DATA_DIR, DATA_DIR_SUBJECT, link.text]
                 course_index.index(build_path(path))
                 self.tree_nodes[course_index.source_id] = course_index.to_node()
 
@@ -262,7 +263,7 @@ class Reference(Topic):
     title = "Reference"
 
     def units(self):
-        index_base_path = build_path([DATA_DIR, self.title])
+        index_base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, self.title])
         if self.soup:
             query = QueryPage(self.soup, self.source_id)
             course_body = query.body()
@@ -278,7 +279,7 @@ class VisualizationPhEt(Topic):
     title = "Ancillary Materials"
 
     def units(self):
-        index_base_path = build_path([DATA_DIR, self.title])
+        index_base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, self.title])
         index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
         if len(index_links) == 0:
             index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
@@ -288,7 +289,7 @@ class VisualizationPhEt(Topic):
                 course_index = CourseIndex(chapter_link.text, chapter_link.attrs.get("href", ""))
                 course_index.description = chapter_link.attrs.get("title")
                 #course_index.thumbnail = self.thumbnails_links.get(url, None)
-                path = [DATA_DIR, chapter_link.text]
+                path = [DATA_DIR, DATA_DIR_SUBJECT, chapter_link.text]
                 course_index.index(build_path(path))
                 self.tree_nodes[course_index.source_id] = course_index.to_node()
     
@@ -297,7 +298,7 @@ class DemosTechniquesExp(Topic):
     title = "Demos, Techniques, and Experiments"
 
     def units(self):
-        index_base_path = build_path([DATA_DIR, self.title])
+        index_base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, self.title])
         index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
         if len(index_links) == 0:
             index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
@@ -342,7 +343,7 @@ class TextBooksTextMapsCategory(object):
             course_index = CourseIndex(link.text, url)
             course_index.description = link.attrs.get("title")
             course_index.thumbnail = self.thumbnails_links.get(url, None)
-            path = [DATA_DIR, link.text]
+            path = [DATA_DIR, DATA_DIR_SUBJECT, link.text]
             base_path = build_path(path)
             course_index.index(base_path)
             node = course_index.to_node()
@@ -392,7 +393,7 @@ def save_thumbnail(url, title):
         img_ext = imghdr.what(img_buffer)
         if img_ext != "gif":
             filename = "{}.{}".format(title, img_ext)
-            base_dir = build_path([DATA_DIR, "thumbnails"])
+            base_dir = build_path([DATA_DIR, DATA_DIR_SUBJECT, "thumbnails"])
             filepath = os.path.join(base_dir, filename)
             with open(filepath, "wb") as f:
                 f.write(img_buffer.read())
@@ -607,6 +608,7 @@ class Chapter(AgendaOrFlatPage):
         self.filepath = None
         self.video_nodes = None
         self.pdf_nodes = None
+        self.phet_nodes = None
         self.author = self.get_author()
         LOGGER.info("--------- Chapter: " + self.title)
         LOGGER.info("---------   url: " + self.source_id)
@@ -667,10 +669,10 @@ class Chapter(AgendaOrFlatPage):
 
     def build_video_nodes(self, base_path, content):
         videos_url = self.get_videos_urls(content)
-        base_path = build_path([DATA_DIR, "videos"])
+        base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "videos"])
         video_nodes = []
         for video_url in videos_url:
-            if YouTubeResource.is_youtube(video_url):
+            if YouTubeResource.is_youtube(video_url) and not YouTubeResource.is_channel(video_url):
                 video = YouTubeResource(video_url, lang=self.lang)
                 video.download(download=DOWNLOAD_VIDEOS, base_path=base_path)
                 node = video.to_node()
@@ -680,7 +682,7 @@ class Chapter(AgendaOrFlatPage):
 
     def build_phet_nodes(self, base_path, content):
         phet_urls = self.get_phet_simulations(content)
-        base_path = build_path([DATA_DIR, "phet"])
+        base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "phet"])
         phet_nodes = []
         for phet_url in phet_urls:
             phet = PhetResource(self.title, phet_url, lang=self.lang)
@@ -700,7 +702,7 @@ class Chapter(AgendaOrFlatPage):
 
         for iframe in content.find_all("iframe"):
             url = iframe["src"]
-            if YouTubeResource.is_youtube(url):
+            if YouTubeResource.is_youtube(url) and not YouTubeResource.is_channel(video_url):
                 urls.add(YouTubeResource.transform_embed(url))
 
         return urls
@@ -728,7 +730,7 @@ class Chapter(AgendaOrFlatPage):
                     else:
                         zipper.write_url(img_src, img_filename, directory="")
                 except (requests.exceptions.HTTPError, requests.exceptions.ConnectTimeout,
-                        requests.exceptions.ConnectionError):
+                        requests.exceptions.ConnectionError, FileNotFoundError):
                     pass
         
     def build_pdfs_nodes(self, base_path, content):
@@ -894,6 +896,10 @@ class YouTubeResource(object):
     def transform_embed(self, url):
         url = "".join(url.split("?")[:1])
         return url.replace("embed/", "watch?v=").strip()
+
+    @staticmethod
+    def is_channel(url):
+        return "channel" in url
 
     def get_video_info(self, download_to=None, subtitles=True):
         ydl_options = {
@@ -1157,6 +1163,8 @@ class LibreTextsChef(JsonTreeChef):
         only_videos = options.get('--only-videos', None)
         download_video = options.get('--download-video', "1")
         subject = options.get('--subject', "phys")
+        global DATA_DIR_SUBJECT
+        DATA_DIR_SUBJECT = subject
         self.RICECOOKER_JSON_TREE = LibreTextsChef.SCRAPING_STAGE_OUTPUT_TPL.format(subject=subject)
         self.scrape_stage = os.path.join(LibreTextsChef.TREES_DATA_DIR, 
             self.RICECOOKER_JSON_TREE)
@@ -1183,11 +1191,7 @@ class LibreTextsChef(JsonTreeChef):
         global BASE_URL
         BASE_URL = SUBJECTS[subject]
 
-        #base_path = build_path([DATA_DIR, "test"])
-        #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
-        #c.index(base_path)
-        #channel_tree["children"].append(c.to_node())
-        #return channel_tree
+        # return test(channel_tree)
 
         p_from_i, p_to_i = get_index_range(only_pages)
         v_from_i, v_to_i = get_index_range(only_videos)
@@ -1202,6 +1206,16 @@ class LibreTextsChef(JsonTreeChef):
     def write_tree_to_json(self, channel_tree):
         write_tree_to_json_tree(self.scrape_stage, channel_tree)
 
+
+def test(channel_tree):
+    base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
+    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
+    #c.index(base_path)
+    #channel_tree["children"].append(c.to_node())
+    c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
+    c.to_file(base_path)
+    channel_tree["children"].append(c.to_node())
+    return channel_tree
 
 # CLI
 ################################################################################
