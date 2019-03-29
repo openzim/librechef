@@ -34,6 +34,7 @@ from utils import get_name_from_url_no_ext, get_node_from_channel, get_level_map
 from utils import remove_iframes, get_confirm_token, save_response_content
 from utils import link_to_text, remove_scripts
 import youtube_dl
+from urllib.parse import urlparse
 
 
 DATA_DIR = "chefdata"
@@ -149,10 +150,10 @@ class Collection:
         self.source_id = link
         self.collection = {
             CourseLibreTexts.title: CourseLibreTexts,
-            #TextBooksTextMaps.title: TextBooksTextMaps,
-            #HomeworkExercices.title: HomeworkExercices,
-            #Homework.title: Homework,
-            #VisualizationPhEt.title: VisualizationPhEt,
+            TextBooksTextMaps.title: TextBooksTextMaps,
+            HomeworkExercices.title: HomeworkExercices,
+            Homework.title: Homework,
+            VisualizationPhEt.title: VisualizationPhEt,
             #Reference.title: Reference,
             #DemosTechniquesExp.title: DemosTechniquesExp
         }
@@ -219,13 +220,12 @@ class CourseLibreTexts(Topic):
         i = 0
         for url in self:
             college = Topic(url.attrs.get("href"), title=url.text)
-            if college.title not in ["Furman University"]:
-                 continue
+            # if college.title not in ["Furman University"]:
+            #     continue
             for link in college:
-                #continue
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
-                path = [DATA_DIR, DATA_DIR_SUBJECT, link.text]
+                path = [DATA_DIR, DATA_DIR_SUBJECT, college.title, link.text]
                 course_index.index(build_path(path))
                 college.tree_nodes[course_index.source_id] = course_index.to_node()
             self.tree_nodes[college.source_id] = college.to_node()
@@ -429,6 +429,9 @@ class CourseIndex(object):
 
     def to_soup(self):
         document = download(self.source_id, loadjs=False)
+        response = requests.get(self.source_id, timeout=5)
+        if response.status_code == 200:
+            self.source_id = response.url
         if document is not None:
             return BeautifulSoup(document, 'html5lib') #html5lib
 
@@ -447,11 +450,11 @@ class CourseIndex(object):
             return tag_a.text
 
     def index(self, base_path):
-        #node = get_node_from_channel(self.source_id, channel_tree)
-        #print(node, channel_tree["children"])
-        if self.source_id is ["https://chem.libretexts.org/Courses"]:
-            #print(len(node), "+***************************+++++++++++++++++++++++", self.source_id)
-            return
+        base_url_path_elems = urlparse(self.source_id).path.split("/")
+        base_url_classes = ["Courses", "Bookshelves", "Homework_Exercises", "Ancillary_Materials"]
+        if len(base_url_path_elems) == 2 and base_url_path_elems[1] in base_url_classes or\
+            len(base_url_path_elems) == 1:
+            return "cycle"
         courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
         if len(courses_link) == 0:
             courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
@@ -495,15 +498,16 @@ class CourseIndex(object):
                         self.tree_nodes[agenda.source_id] = agenda.to_node()
                     else:
                         course_index = CourseIndex(course_link.text, course_link_href)
-                        course_index.index(build_path([base_path, course_link.text]))
-                        course_index_node = course_index.to_node()
-                        if len(course_index_node["children"]) == 0:
-                            chapter = Chapter(course_link.text, course_link_href)
-                            chapter.to_file(chapter_basepath)
-                            node = chapter.to_node()
-                            self.tree_nodes[chapter.source_id] = node
-                        else:
-                            self.tree_nodes[course_index.source_id] = course_index_node
+                        result = course_index.index(build_path([base_path, course_link.text]))
+                        if result is None:
+                            course_index_node = course_index.to_node()
+                            if len(course_index_node["children"]) == 0:
+                                chapter = Chapter(course_link.text, course_link_href)
+                                chapter.to_file(chapter_basepath)
+                                node = chapter.to_node()
+                                self.tree_nodes[chapter.source_id] = node
+                            else:
+                                self.tree_nodes[course_index.source_id] = course_index_node
                         
             #break
 
@@ -641,7 +645,7 @@ class Chapter(AgendaOrFlatPage):
         return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../MathJax/"
+        mathajax_path = "../../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
