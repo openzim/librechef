@@ -215,11 +215,13 @@ class CourseLibreTexts(Topic):
     title = "Campus Courses"#"Course LibreTexts"
 
     def units(self):
+        limit = 5
+        i = 0
         for url in self:
-            #print(url, self.title, url.text)
             college = Topic(url.attrs.get("href"), title=url.text)
-            for link in college:  #Browser(url.attrs.get("href")).run():
-                #print(link.attrs.get("href"), "++++++++++")
+            if college.title not in ["Furman University"]:
+                 continue
+            for link in college:
                 #continue
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
@@ -227,7 +229,10 @@ class CourseLibreTexts(Topic):
                 course_index.index(build_path(path))
                 college.tree_nodes[course_index.source_id] = course_index.to_node()
             self.tree_nodes[college.source_id] = college.to_node()
-            break
+            if i > limit:
+                break
+            print("--------------------", i, "------------------")
+            i += 1
 
 
 class TextBooksTextMaps(Topic):
@@ -442,6 +447,11 @@ class CourseIndex(object):
             return tag_a.text
 
     def index(self, base_path):
+        #node = get_node_from_channel(self.source_id, channel_tree)
+        #print(node, channel_tree["children"])
+        if self.source_id is ["https://chem.libretexts.org/Courses"]:
+            #print(len(node), "+***************************+++++++++++++++++++++++", self.source_id)
+            return
         courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
         if len(courses_link) == 0:
             courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
@@ -1077,9 +1087,11 @@ class File(object):
             LOGGER.info("Connection error, the resource will be scraped in 5s...")
             time.sleep(3)
         except requests.exceptions.ReadTimeout as e:
-            LOGGER.info("Error: {}".format(e))
+            LOGGER.error("Error: {}".format(e))
         except requests.exceptions.TooManyRedirects as e:
-            LOGGER.info("Error: {}".format(e))
+            LOGGER.error("Error: {}".format(e))
+        except requests.exceptions.InvalidSchema as e:
+            LOGGER.error("Error: {}".format(e))
 
     def to_node(self):
         if self.filepath is not None:
@@ -1216,12 +1228,14 @@ class LibreTextsChef(JsonTreeChef):
 def test(channel_tree):
     base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
-    #c.index(base_path)
+    c = CourseIndex("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)")
+    c.index(base_path)
     #channel_tree["children"].append(c.to_node())
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
-    c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
-    c.to_file(base_path)
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/08%3A_Water_chemistry/7.04%3A_Chemical_Contamination_of_Water")
+    #c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
     return channel_tree
 
