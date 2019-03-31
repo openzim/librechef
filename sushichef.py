@@ -28,8 +28,8 @@ import time
 from urllib.error import URLError
 from urllib.parse import urljoin
 from urllib.parse import urlparse, parse_qs 
-from utils import if_dir_exists, get_name_from_url, clone_repo, build_path
-from utils import if_file_exists, get_video_resolution_format, remove_links
+from utils import dir_exists, get_name_from_url, clone_repo, build_path
+from utils import file_exists, get_video_resolution_format, remove_links
 from utils import get_name_from_url_no_ext, get_node_from_channel, get_level_map
 from utils import remove_iframes, get_confirm_token, save_response_content
 from utils import link_to_text, remove_scripts
@@ -150,10 +150,10 @@ class Collection:
         self.source_id = link
         self.collection = {
             CourseLibreTexts.title: CourseLibreTexts,
-            TextBooksTextMaps.title: TextBooksTextMaps,
-            HomeworkExercices.title: HomeworkExercices,
-            Homework.title: Homework,
-            VisualizationPhEt.title: VisualizationPhEt,
+            #TextBooksTextMaps.title: TextBooksTextMaps,
+            #HomeworkExercices.title: HomeworkExercices,
+            #Homework.title: Homework,
+            #VisualizationPhEt.title: VisualizationPhEt,
             #Reference.title: Reference,
             #DemosTechniquesExp.title: DemosTechniquesExp
         }
@@ -229,10 +229,10 @@ class CourseLibreTexts(Topic):
                 course_index.index(build_path(path))
                 college.tree_nodes[course_index.source_id] = course_index.to_node()
             self.tree_nodes[college.source_id] = college.to_node()
-            if i > limit:
-                break
-            print("--------------------", i, "------------------")
-            i += 1
+            #if i > limit:
+            #    break
+            #print("--------------------", i, "------------------")
+            #i += 1
 
 
 class TextBooksTextMaps(Topic):
@@ -444,10 +444,12 @@ class CourseIndex(object):
         self._thumbnail = save_thumbnail(url, self.title)
 
     def author(self):
-        div = self.soup.find("div", "mt-author-container")
-        if div is not None:
-            tag_a = div.find(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-author-information"))
-            return tag_a.text
+        if self.soup is not None:
+            div = self.soup.find("div", "mt-author-container")
+            if div is not None:
+                tag_a = div.find(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-author-information"))
+                if tag_a is not None:
+                    return tag_a.text
 
     def index(self, base_path):
         base_url_path_elems = urlparse(self.source_id).path.split("/")
@@ -569,7 +571,7 @@ class AgendaOrFlatPage(object):
         self.lang = "en"
         self.filepath = None
         LOGGER.info("--- Agenda (Flat Page)" + self.title)
-        LOGGER.info("---   url" + self.url)
+        LOGGER.info("---   url" + self.source_id)
 
     def write_css_js(self, filepath):
         with html_writer.HTMLWriter(filepath, "a") as zipper, open("chefdata/styles.css") as f:
@@ -581,7 +583,8 @@ class AgendaOrFlatPage(object):
             zipper.write_contents("scripts.js", content, directory="js/")
 
     def body(self):
-        return self.soup.find("section", class_="mt-content-container")        
+        if self.soup is not None:
+            return self.soup.find("section", class_="mt-content-container")        
 
     def clean(self, content):
         link_to_text(content)
@@ -601,9 +604,14 @@ class AgendaOrFlatPage(object):
 
     def to_file(self, base_path):
         self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
-        body = self.clean(self.body())
-        self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(body))
-        self.write_css_js(self.filepath)
+        if file_exists(self.filepath):
+            return
+        if self.body() is not None:
+            body = self.clean(self.body())
+            self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(body))
+            self.write_css_js(self.filepath)
+        else:
+            LOGGER.error("Empty body in {}".format(self.source_id))
 
     def to_node(self):
         return dict(
@@ -636,16 +644,18 @@ class Chapter(AgendaOrFlatPage):
         LOGGER.info("---------   url: " + self.source_id)
 
     def get_author(self):
-        tag_a = self.soup.find(lambda tag: tag.name == "a" and tag.findParent("li", "mt-author-information"))
-        if tag_a is not None:
-            return tag_a.text
+        if self.soup is not None:
+            tag_a = self.soup.find(lambda tag: tag.name == "a" and tag.findParent("li", "mt-author-information"))
+            if tag_a is not None:
+                return tag_a.text
 
     def mathjax(self):
-        scripts = self.soup.find_all("script", type="text/x-mathjax-config")
-        return "".join([str(s) for s in scripts])
+        if self.soup is not None:
+            scripts = self.soup.find_all("script", type="text/x-mathjax-config")
+            return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../../MathJax/"
+        mathajax_path = "../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
@@ -717,30 +727,32 @@ class Chapter(AgendaOrFlatPage):
 
     def get_videos_urls(self, content):
         urls = set([])
-        video_urls = content.find_all(lambda tag: tag.name == "a" and tag.attrs.get("href", "").find("youtube") != -1 or tag.attrs.get("href", "").find("youtu.be") != -1 or tag.text.lower() == "youtube")
+        if content is not None:
+            video_urls = content.find_all(lambda tag: tag.name == "a" and tag.attrs.get("href", "").find("youtube") != -1 or tag.attrs.get("href", "").find("youtu.be") != -1 or tag.text.lower() == "youtube")
 
-        for video_url in video_urls:
-            urls.add(video_url.get("href", ""))
+            for video_url in video_urls:
+                urls.add(video_url.get("href", ""))
 
-        for iframe in content.find_all("iframe"):
-            url = iframe["src"]
-            if YouTubeResource.is_youtube(url) and not YouTubeResource.is_channel(url):
-                urls.add(YouTubeResource.transform_embed(url))
-
+            for iframe in content.find_all("iframe"):
+                url = iframe["src"]
+                if YouTubeResource.is_youtube(url) and not YouTubeResource.is_channel(url):
+                    urls.add(YouTubeResource.transform_embed(url))
         return urls
 
     def get_pdfs_urls(self, content):
         urls = set([])
-        pdf_urls = content.findAll(lambda tag: tag.name == "a" and tag.attrs.get("href", "").endswith(".pdf"))
-        for pdf_url in pdf_urls:
-            urls.add(pdf_url.get("href", ""))
+        if content is not None:
+            pdf_urls = content.findAll(lambda tag: tag.name == "a" and tag.attrs.get("href", "").endswith(".pdf"))
+            for pdf_url in pdf_urls:
+                urls.add(pdf_url.get("href", ""))
         return urls
 
     def get_phet_simulations(self, content):
         urls = set([])
-        phet_urls = content.findAll(lambda tag: tag.name == "iframe" and tag.attrs.get("src", "").find("phet.colorado.edu") != -1)
-        for phet_url in phet_urls:
-            urls.add(phet_url.get("src", ""))
+        if content is not None:
+            phet_urls = content.findAll(lambda tag: tag.name == "iframe" and tag.attrs.get("src", "").find("phet.colorado.edu") != -1)
+            for phet_url in phet_urls:
+                urls.add(phet_url.get("src", ""))
         return urls
 
     def write_images(self, filepath, images):
@@ -753,7 +765,7 @@ class Chapter(AgendaOrFlatPage):
                         # zipper.write_url(img_src, img_filename, directory="")
                         zipper.write_contents(img_filename, downloader.read(img_src, timeout=5, session=sess), directory="")
                 except (requests.exceptions.HTTPError, requests.exceptions.ConnectTimeout,
-                        requests.exceptions.ConnectionError, FileNotFoundError):
+                        requests.exceptions.ConnectionError, FileNotFoundError, requests.exceptions.ReadTimeout):
                     pass
         
     def build_pdfs_nodes(self, base_path, content):
@@ -785,17 +797,22 @@ class Chapter(AgendaOrFlatPage):
 
     def to_file(self, base_path):
         self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        if file_exists(self.filepath):
+            return
         mathjax_scripts = self.mathjax()
-        self.video_nodes = self.build_video_nodes(base_path, self.body())
-        self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
-        self.phet_nodes = self.build_phet_nodes(base_path, self.body())
-        body = self.clean(self.body())
-        images = self.to_local_images(body)
-        self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
-        self.write_images(self.filepath, images)
-        self.write_css_js(self.filepath)
-        self.write_mathjax(self.filepath)
-        self.mathjax_dependences(self.filepath)
+        if self.body() is not None:
+            self.video_nodes = self.build_video_nodes(base_path, self.body())
+            self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
+            self.phet_nodes = self.build_phet_nodes(base_path, self.body())
+            body = self.clean(self.body())
+            images = self.to_local_images(body)
+            self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
+            self.write_images(self.filepath, images)
+            self.write_css_js(self.filepath)
+            self.write_mathjax(self.filepath)
+            self.mathjax_dependences(self.filepath)
+        else:
+            LOGGER.error("Empty body in {}".format(self.source_id))
 
     def topic_node(self):
         return dict(
@@ -831,13 +848,13 @@ class Chapter(AgendaOrFlatPage):
                 node["children"].append(node_)
 
     def to_node(self):
-        if len(self.phet_nodes) > 0:
+        if self.phet_nodes is not None and len(self.phet_nodes) > 0:
             if len(self.phet_nodes) > 1:
                 node = self.topic_node()
                 self.add_to_node(node, self.phet_nodes)
             else:
                 node = self.phet_nodes[0]
-        elif len(self.video_nodes) > 0 or len(self.pdf_nodes) > 0:
+        elif self.video_nodes is not None and len(self.video_nodes) > 0 or self.pdf_nodes is not None and len(self.pdf_nodes) > 0:
             node = self.topic_node()
             node["children"].append(self.html_node())
             self.add_to_node(node, self.video_nodes)
@@ -950,8 +967,8 @@ class YouTubeResource(object):
         subs = []
         video_info = self.get_video_info()
         if video_info is not None:
-            video_id = video_info["id"]
-            if 'subtitles' in video_info:
+            video_id = video_info.get("id", None)
+            if 'subtitles' in video_info and video_id is not None:
                 subtitles_info = video_info["subtitles"]
                 LOGGER.info("Subtitles: {}".format(",".join(subtitles_info.keys())))
                 for language in subtitles_info.keys():
@@ -980,7 +997,7 @@ class YouTubeResource(object):
                     youtube_dl.utils.ExtractorError, OSError) as e:
                 LOGGER.info("    + An error ocurred, may be the video is not available.")
                 return
-            except OSError:
+            except (OSError, KeyError) as e:
                 return
             else:
                 return
@@ -1077,7 +1094,7 @@ class File(object):
                 return
             response = sess.get(self.source_id)
             content_type = response.headers.get('content-type')
-            if 'application/pdf' in content_type:
+            if content_type is not None and 'application/pdf' in content_type:
                 self.filepath = os.path.join(base_path, self.filename)
                 with open(self.filepath, 'wb') as f:
                     for chunk in response.iter_content(10000):
@@ -1127,10 +1144,12 @@ def download(source_id, loadjs=False):
             time.sleep(3)
         except requests.exceptions.TooManyRedirects as e:
             LOGGER.info("Error: {}".format(e))
+        except (requests.exceptions.InvalidURL, FileNotFoundError) as e:
+            LOGGER.error(e)
         else:
             return document
         tries += 1
-    return False
+    # return False
 
 
 def get_index_range(only_pages):
@@ -1232,14 +1251,21 @@ class LibreTextsChef(JsonTreeChef):
 def test(channel_tree):
     base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
-    c = CourseIndex("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)")
+    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)")
+    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
+    #c = CourseIndex("test", "https://www.flickr.com/photos/nate/")
+    c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
     c.index(base_path)
-    #channel_tree["children"].append(c.to_node())
+    channel_tree["children"].append(c.to_node())
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/08%3A_Water_chemistry/7.04%3A_Chemical_Contamination_of_Water")
-    #c.to_file(base_path)
+    #c = Chapter("test", "https://chem.libretexts.org/Bookshelves/General_Chemistry/Book%3A_ChemPRIME_(Moore_et_al.)/19Nuclear_Chemistry/19.14%3A_Nuclear_Power_Plants")
+    #c = Chapter("test", "https://chem.libretexts.org/Homework_Exercises/Exercises%3A_General_Chemistry/Exercises%3A_Gray/Homework_09")
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
+    c = Chapter("test", "----https://www.flickr.com/photos/nate/")
+    c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
     return channel_tree
 
