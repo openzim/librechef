@@ -364,9 +364,14 @@ class TextBooksTextMapsCategory(object):
                 chapter = Chapter(link.text, link.get("href", ""))
                 chapter.to_file(base_path)
                 node = chapter.to_node()
-            self.tree_nodes[course_index.source_id] = node
+            # self.tree_nodes[course_index.source_id] = node
+            self.add_node(node)
             #break
         ## CHAPTER INSIDE
+
+    def add_node(self, node):
+        if node is not None:
+            self.tree_nodes[node["source_id"]] = node
 
     def to_node(self):
         return dict(
@@ -415,7 +420,7 @@ def save_thumbnail(url, title):
 
 
 class CourseIndex(object):
-    def __init__(self, title, url):
+    def __init__(self, title, url, visited_urls=None):
         self.source_id = url
         self.title = title
         self.lang = "en"
@@ -424,6 +429,7 @@ class CourseIndex(object):
         self.soup = self.to_soup()
         self.author()
         self._thumbnail = None
+        self.visited_urls = visited_urls if visited_urls is not None else set([])
         LOGGER.info("----- Course Index title: " + self.title)
         LOGGER.info("-----    url: " + self.source_id)
 
@@ -477,8 +483,12 @@ class CourseIndex(object):
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
         index_base_path = base_path  # build_path([base_path])
+        print(index_base_path, "+++++++++++++++++")
         for course_link in courses_link:
             course_link_href = course_link.attrs.get("href", "")
+            if course_link_href in self.visited_urls:
+                 continue
+            self.visited_urls.add(course_link_href)
             document = download(course_link_href)
             chapter_basepath = build_path([index_base_path, course_link.text])
             if document is not None:
@@ -492,26 +502,34 @@ class CourseIndex(object):
                         chapter.to_file(chapter_basepath)
                         node = chapter.to_node()
                         course.add_node(node)
-                    self.tree_nodes[course.source_id] = course.to_node()
+                    # self.tree_nodes[course.source_id] = course.to_node()
+                    self.add_node(course.to_node())
                 else:
                     if course_link.text.strip() == "Agenda":
                         agenda = AgendaOrFlatPage(course_link.text, course_link_href)
                         agenda.to_file(chapter_basepath)
-                        self.tree_nodes[agenda.source_id] = agenda.to_node()
+                        # self.tree_nodes[agenda.source_id] = agenda.to_node()
+                        self.add_node(agenda.to_node())
                     else:
-                        course_index = CourseIndex(course_link.text, course_link_href)
+                        course_index = CourseIndex(course_link.text, course_link_href, visited_urls=self.visited_urls)
                         result = course_index.index(build_path([base_path, course_link.text]))
+                        print(self.tree_nodes, "+++++++++++++++")
                         if result is None:
                             course_index_node = course_index.to_node()
                             if len(course_index_node["children"]) == 0:
                                 chapter = Chapter(course_link.text, course_link_href)
                                 chapter.to_file(chapter_basepath)
                                 node = chapter.to_node()
-                                self.tree_nodes[chapter.source_id] = node
+                                # self.tree_nodes[chapter.source_id] = node
+                                self.add_node(node)
                             else:
-                                self.tree_nodes[course_index.source_id] = course_index_node
-                        
+                                # self.tree_nodes[course_index.source_id] = course_index_node
+                                self.add_node(course_index_node)
             #break
+
+    def add_node(self, node):
+        if node is not None:
+            self.tree_nodes[node["source_id"]] = node
 
     def to_node(self):
         return dict(
@@ -603,10 +621,11 @@ class AgendaOrFlatPage(object):
             zipper.write_index_contents(content)
 
     def to_file(self, base_path):
-        self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
-        if file_exists(self.filepath):
-            return
-        if self.body() is not None:
+        filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        if file_exists(filepath):
+            self.filepath = filepath
+        elif self.body() is not None:
+            self.filepath = filepath
             body = self.clean(self.body())
             self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(body))
             self.write_css_js(self.filepath)
@@ -614,7 +633,8 @@ class AgendaOrFlatPage(object):
             LOGGER.error("Empty body in {}".format(self.source_id))
 
     def to_node(self):
-        return dict(
+        if self.filepath is not None:
+            return dict(
             kind=content_kinds.HTML5,
             source_id=self.source_id,
             title=self.title,
@@ -783,7 +803,7 @@ class Chapter(AgendaOrFlatPage):
     def write_mathjax(self, filepath):
         script_tag = self.soup.find(lambda tag: tag.name == "script" and tag.attrs.get("src", "").find("MathJax.js") != -1)
         filepath_js = "chefdata/MathJax.js"
-        if not if_file_exists(filepath_js) and script_tag:
+        if not file_exists(filepath_js) and script_tag:
             try:
                 r = requests.get(script_tag["src"])
                 with open(filepath_js, "wb") as f:
@@ -796,11 +816,12 @@ class Chapter(AgendaOrFlatPage):
             zipper.write_contents("MathJax.js", content, directory="js/")
 
     def to_file(self, base_path):
-        self.filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
-        if file_exists(self.filepath):
-            return
-        mathjax_scripts = self.mathjax()
-        if self.body() is not None:
+        filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        if file_exists(filepath):
+            self.filepath = filepath
+        elif self.body() is not None:
+            self.filepath = filepath
+            mathjax_scripts = self.mathjax()
             self.video_nodes = self.build_video_nodes(base_path, self.body())
             self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
             self.phet_nodes = self.build_phet_nodes(base_path, self.body())
@@ -828,7 +849,8 @@ class Chapter(AgendaOrFlatPage):
         )
 
     def html_node(self):
-        return dict(
+        if self.filepath is not None:
+            return dict(
             kind=content_kinds.HTML5,
             source_id=self.source_id,
             title=self.title,
@@ -1063,7 +1085,8 @@ class PhetResource(object):
         return str(soup)
 
     def to_node(self):
-        return dict(
+        if self.filepath is not None:
+            return dict(
             kind=content_kinds.HTML5,
             source_id=self.source_id,
             title=self.title,
@@ -1232,7 +1255,7 @@ class LibreTextsChef(JsonTreeChef):
         global BASE_URL
         BASE_URL = SUBJECTS[subject]
 
-        # return test(channel_tree)
+        return test(channel_tree)
 
         p_from_i, p_to_i = get_index_range(only_pages)
         v_from_i, v_to_i = get_index_range(only_videos)
@@ -1254,7 +1277,8 @@ def test(channel_tree):
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)")
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
     #c = CourseIndex("test", "https://www.flickr.com/photos/nate/")
-    c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
+    #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
+    c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry")
     c.index(base_path)
     channel_tree["children"].append(c.to_node())
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
@@ -1264,9 +1288,9 @@ def test(channel_tree):
     #c = Chapter("test", "https://chem.libretexts.org/Bookshelves/General_Chemistry/Book%3A_ChemPRIME_(Moore_et_al.)/19Nuclear_Chemistry/19.14%3A_Nuclear_Power_Plants")
     #c = Chapter("test", "https://chem.libretexts.org/Homework_Exercises/Exercises%3A_General_Chemistry/Exercises%3A_Gray/Homework_09")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
-    c = Chapter("test", "----https://www.flickr.com/photos/nate/")
-    c.to_file(base_path)
-    channel_tree["children"].append(c.to_node())
+    #c = Chapter("test", "----https://www.flickr.com/photos/nate/")
+    #c.to_file(base_path)
+    #channel_tree["children"].append(c.to_node())
     return channel_tree
 
 # CLI
