@@ -216,7 +216,7 @@ class CourseLibreTexts(Topic):
     title = "Campus Courses"#"Course LibreTexts"
 
     def units(self):
-        limit = 5
+        limit = 7
         i = 0
         for url in self:
             college = Topic(url.attrs.get("href"), title=url.text)
@@ -483,7 +483,7 @@ class CourseIndex(object):
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
         index_base_path = base_path  # build_path([base_path])
-        print(index_base_path, "+++++++++++++++++")
+        # print(index_base_path, "+++++++++++++++++")
         for course_link in courses_link:
             course_link_href = course_link.attrs.get("href", "")
             if course_link_href in self.visited_urls:
@@ -513,7 +513,7 @@ class CourseIndex(object):
                     else:
                         course_index = CourseIndex(course_link.text, course_link_href, visited_urls=self.visited_urls)
                         result = course_index.index(build_path([base_path, course_link.text]))
-                        print(self.tree_nodes, "+++++++++++++++")
+                        # print(self.tree_nodes, "+++++++++++++++")
                         if result is None:
                             course_index_node = course_index.to_node()
                             if len(course_index_node["children"]) == 0:
@@ -817,14 +817,22 @@ class Chapter(AgendaOrFlatPage):
 
     def to_file(self, base_path):
         filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
-        if file_exists(filepath):
-            self.filepath = filepath
-        elif self.body() is not None:
-            self.filepath = filepath
-            mathjax_scripts = self.mathjax()
+        if self.body() is not None:
             self.video_nodes = self.build_video_nodes(base_path, self.body())
             self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
             self.phet_nodes = self.build_phet_nodes(base_path, self.body())
+        else:
+            LOGGER.error("Empty body in {}".format(self.source_id))
+            return
+
+        if file_exists(filepath):
+            self.filepath = filepath
+        else:
+            self.filepath = filepath
+            mathjax_scripts = self.mathjax()
+            # self.video_nodes = self.build_video_nodes(base_path, self.body())
+            # self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
+            # self.phet_nodes = self.build_phet_nodes(base_path, self.body())
             body = self.clean(self.body())
             images = self.to_local_images(body)
             self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
@@ -832,8 +840,6 @@ class Chapter(AgendaOrFlatPage):
             self.write_css_js(self.filepath)
             self.write_mathjax(self.filepath)
             self.mathjax_dependences(self.filepath)
-        else:
-            LOGGER.error("Empty body in {}".format(self.source_id))
 
     def topic_node(self):
         return dict(
@@ -1255,7 +1261,7 @@ class LibreTextsChef(JsonTreeChef):
         global BASE_URL
         BASE_URL = SUBJECTS[subject]
 
-        return test(channel_tree)
+        # return test(channel_tree)
 
         p_from_i, p_to_i = get_index_range(only_pages)
         v_from_i, v_to_i = get_index_range(only_videos)
@@ -1278,9 +1284,9 @@ def test(channel_tree):
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
     #c = CourseIndex("test", "https://www.flickr.com/photos/nate/")
     #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
-    c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry")
-    c.index(base_path)
-    channel_tree["children"].append(c.to_node())
+    #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry")
+    #c.index(base_path)
+    #channel_tree["children"].append(c.to_node())
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
@@ -1288,9 +1294,9 @@ def test(channel_tree):
     #c = Chapter("test", "https://chem.libretexts.org/Bookshelves/General_Chemistry/Book%3A_ChemPRIME_(Moore_et_al.)/19Nuclear_Chemistry/19.14%3A_Nuclear_Power_Plants")
     #c = Chapter("test", "https://chem.libretexts.org/Homework_Exercises/Exercises%3A_General_Chemistry/Exercises%3A_Gray/Homework_09")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
-    #c = Chapter("test", "----https://www.flickr.com/photos/nate/")
-    #c.to_file(base_path)
-    #channel_tree["children"].append(c.to_node())
+    c = Chapter("test", "https://chem.libretexts.org/Courses/Eastern_Wyoming_College/EWC%3A_Introductory_Chemistry_(Budhi)/01%3A_The_Chemical_World/1.5%3A_A_Beginning_Chemist_-_How_to_Succeed")
+    c.to_file(base_path)
+    channel_tree["children"].append(c.to_node())
     return channel_tree
 
 # CLI
