@@ -51,6 +51,7 @@ LOGGER.setLevel(logging.INFO)
 
 DOWNLOAD_VIDEOS = True
 DOWNLOAD_FILES = True
+OVERWRITE = True
 
 sess = requests.Session()
 cache = FileCache('.webcache')
@@ -145,14 +146,16 @@ class LinkCollection:
 
 
 class Collection:
+    url_names = ["Courses", "Bookshelves", "Homework_Exercises", "Ancillary_Materials"]
+
     def __init__(self, title, link):
         self.title = title
         self.source_id = link
         self.collection = {
-            CourseLibreTexts.title: CourseLibreTexts,
+            #CourseLibreTexts.title: CourseLibreTexts,
             #TextBooksTextMaps.title: TextBooksTextMaps,
-            #HomeworkExercices.title: HomeworkExercices,
-            #Homework.title: Homework,
+            HomeworkExercices.title: HomeworkExercices,
+            Homework.title: Homework,
             #VisualizationPhEt.title: VisualizationPhEt,
             #Reference.title: Reference,
             #DemosTechniquesExp.title: DemosTechniquesExp
@@ -199,6 +202,10 @@ class Topic(object):
     def populate_thumbnails(self):
         pass
 
+    def add_node(self, node):
+        if node is not None:
+            self.tree_nodes[node["source_id"]] = node
+
     def to_node(self):
         return dict(
             kind=content_kinds.TOPIC,
@@ -219,16 +226,14 @@ class CourseLibreTexts(Topic):
         limit = 7
         i = 0
         for url in self:
-            college = Topic(url.attrs.get("href"), title=url.text)
-            # if college.title not in ["Furman University"]:
-            #     continue
-            for link in college:
+            topic = Topic(url.attrs.get("href"), title=url.text)
+            for link in topic:
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
-                path = [DATA_DIR, DATA_DIR_SUBJECT, college.title, link.text]
+                path = [DATA_DIR, DATA_DIR_SUBJECT, topic.title, link.text]
                 course_index.index(build_path(path))
-                college.tree_nodes[course_index.source_id] = course_index.to_node()
-            self.tree_nodes[college.source_id] = college.to_node()
+                topic.add_node(course_index.to_node())
+            self.add_node(topic.to_node())
             #if i > limit:
             #    break
             #print("--------------------", i, "------------------")
@@ -258,14 +263,23 @@ class HomeworkExercices(Topic):
     def populate_thumbnails(self):
         self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
+    #def units(self):
+    #    for content_link in self:
+    #        url = content_link.attrs.get("href")
+    #        text_book = TextBooksTextMapsCategory(content_link.text, url)
+    #        text_book.populate_thumbnails()
+    #        text_book.thumbnail = self.thumbnails_links.get(url, None)
+    #        text_book.courses()
+    #        self.tree_nodes[text_book.source_id] = text_book.to_node()
+    
     def units(self):
-        for content_link in self:
-            url = content_link.attrs.get("href")
-            text_book = TextBooksTextMapsCategory(content_link.text, url)
-            text_book.populate_thumbnails()
-            text_book.thumbnail = self.thumbnails_links.get(url, None)
-            text_book.courses()
-            self.tree_nodes[text_book.source_id] = text_book.to_node()
+        base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
+        for chapter_link in self:
+            course_index = CourseIndex(chapter_link.text, chapter_link.attrs.get("href", ""))
+            course_index.description = chapter_link.attrs.get("title")
+            course_index.thumbnail = self.thumbnails_links.get(chapter_link.attrs.get("href", ""), None)
+            course_index.index(build_path(base_path + [chapter_link.text]))
+            self.add_node(course_index.to_node())
 
 
 class Homework(HomeworkExercices):  # Alias for homework and exercices
@@ -292,19 +306,15 @@ class VisualizationPhEt(Topic):
     title = "Ancillary Materials"
 
     def units(self):
-        index_base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, self.title])
-        index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
-        if len(index_links) == 0:
-            index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
-
-        for chapter_link in index_links:
-            if chapter_link.text == "PhET Simulations":
-                course_index = CourseIndex(chapter_link.text, chapter_link.attrs.get("href", ""))
-                course_index.description = chapter_link.attrs.get("title")
-                #course_index.thumbnail = self.thumbnails_links.get(url, None)
-                path = [DATA_DIR, DATA_DIR_SUBJECT, chapter_link.text]
-                course_index.index(build_path(path))
-                self.tree_nodes[course_index.source_id] = course_index.to_node()
+        base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
+        for chapter_link in self:
+            #if chapter_link.text != "Reference":
+            #    continue
+            course_index = CourseIndex(chapter_link.text, chapter_link.attrs.get("href", ""))
+            course_index.description = chapter_link.attrs.get("title")
+            course_index.thumbnail = self.thumbnails_links.get(chapter_link.attrs.get("href", ""), None)
+            course_index.index(build_path(base_path + [chapter_link.text]))
+            self.add_node(course_index.to_node())
     
 
 class DemosTechniquesExp(Topic):
@@ -433,13 +443,17 @@ class CourseIndex(object):
         LOGGER.info("----- Course Index title: " + self.title)
         LOGGER.info("-----    url: " + self.source_id)
 
-    def to_soup(self):
-        document = download(self.source_id, loadjs=False)
-        response = requests.get(self.source_id, timeout=5)
-        if response.status_code == 200:
-            self.source_id = response.url
-        if document is not None:
-            return BeautifulSoup(document, 'html5lib') #html5lib
+    def to_soup(self, loadjs=False):
+        document = download(self.source_id, loadjs=loadjs)
+        try:
+            response = requests.get(self.source_id, timeout=5)
+        except Exception:
+            pass
+        else:
+            if response.status_code == 200:
+                self.source_id = response.url
+            if document is not None:
+                return BeautifulSoup(document, 'html5lib') #html5lib
 
     @property
     def thumbnail(self):
@@ -459,7 +473,7 @@ class CourseIndex(object):
 
     def index(self, base_path):
         base_url_path_elems = urlparse(self.source_id).path.split("/")
-        base_url_classes = ["Courses", "Bookshelves", "Homework_Exercises", "Ancillary_Materials"]
+        base_url_classes = Collection.url_names
         if len(base_url_path_elems) == 2 and base_url_path_elems[1] in base_url_classes or\
             len(base_url_path_elems) == 1:
             return "cycle"
@@ -467,13 +481,11 @@ class CourseIndex(object):
         if len(courses_link) == 0:
             courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
         if len(courses_link) == 0:
-            print("INDEX", self.source_id)
             query = QueryPage(self.soup, self.source_id)
             body = query.body()
             if body is not None:
                 courses_link = body.find_all("a")
             else:
-                LOGGER.info("LAST CHANCE TO GET THE LINKS")
                 courses_link = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("div", class_="wiki-tree"))
                 if len(courses_link) == 0:
                     return
@@ -483,7 +495,6 @@ class CourseIndex(object):
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
         index_base_path = base_path  # build_path([base_path])
-        # print(index_base_path, "+++++++++++++++++")
         for course_link in courses_link:
             course_link_href = course_link.attrs.get("href", "")
             if course_link_href in self.visited_urls:
@@ -502,28 +513,25 @@ class CourseIndex(object):
                         chapter.to_file(chapter_basepath)
                         node = chapter.to_node()
                         course.add_node(node)
-                    # self.tree_nodes[course.source_id] = course.to_node()
                     self.add_node(course.to_node())
                 else:
                     if course_link.text.strip() == "Agenda":
                         agenda = AgendaOrFlatPage(course_link.text, course_link_href)
                         agenda.to_file(chapter_basepath)
-                        # self.tree_nodes[agenda.source_id] = agenda.to_node()
                         self.add_node(agenda.to_node())
+                    elif course_link.text.strip() == "CalcPlot3D Interactive Figures":
+                        pass
                     else:
                         course_index = CourseIndex(course_link.text, course_link_href, visited_urls=self.visited_urls)
                         result = course_index.index(build_path([base_path, course_link.text]))
-                        # print(self.tree_nodes, "+++++++++++++++")
                         if result is None:
                             course_index_node = course_index.to_node()
                             if len(course_index_node["children"]) == 0:
                                 chapter = Chapter(course_link.text, course_link_href)
                                 chapter.to_file(chapter_basepath)
                                 node = chapter.to_node()
-                                # self.tree_nodes[chapter.source_id] = node
                                 self.add_node(node)
                             else:
-                                # self.tree_nodes[course_index.source_id] = course_index_node
                                 self.add_node(course_index_node)
             #break
 
@@ -622,8 +630,9 @@ class AgendaOrFlatPage(object):
 
     def to_file(self, base_path):
         filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
-        if file_exists(filepath):
+        if file_exists(filepath) and OVERWRITE is False:
             self.filepath = filepath
+            LOGGER.info("Not overwrited file {}".format(self.filepath))
         elif self.body() is not None:
             self.filepath = filepath
             body = self.clean(self.body())
@@ -675,7 +684,7 @@ class Chapter(AgendaOrFlatPage):
             return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../MathJax/"
+        mathajax_path = "../../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
@@ -770,7 +779,7 @@ class Chapter(AgendaOrFlatPage):
     def get_phet_simulations(self, content):
         urls = set([])
         if content is not None:
-            phet_urls = content.findAll(lambda tag: tag.name == "iframe" and tag.attrs.get("src", "").find("phet.colorado.edu") != -1)
+            phet_urls = content.find_all(lambda tag: tag.name == "iframe" and tag.attrs.get("src", "").find("phet.colorado.edu") != -1)
             for phet_url in phet_urls:
                 urls.add(phet_url.get("src", ""))
         return urls
@@ -825,14 +834,12 @@ class Chapter(AgendaOrFlatPage):
             LOGGER.error("Empty body in {}".format(self.source_id))
             return
 
-        if file_exists(filepath):
+        if file_exists(filepath) and OVERWRITE is False:
             self.filepath = filepath
+            LOGGER.info("Not overwrited file {}".format(self.filepath))
         else:
             self.filepath = filepath
             mathjax_scripts = self.mathjax()
-            # self.video_nodes = self.build_video_nodes(base_path, self.body())
-            # self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
-            # self.phet_nodes = self.build_phet_nodes(base_path, self.body())
             body = self.clean(self.body())
             images = self.to_local_images(body)
             self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
@@ -899,6 +906,12 @@ class QueryPage:
         self.source_id = source_id
 
     def get_id(self):
+        page_global_settings = self.soup.find("script", id="mt-global-settings")
+        if page_global_settings:
+            self.x_deki_token = json.loads(page_global_settings.text).get("apiToken", None)
+        else:
+            self.x_deki_token = None
+
         query_param = self.soup.find("div", class_="mt-guide-tabs-container")
         if query_param is not None:
             self.page_id = query_param.attrs.get("data-page-id", "")
@@ -912,8 +925,12 @@ class QueryPage:
         if self.page_id is not None and self.guid is not None:
             url = "{}@api/deki/pages/=Template%253AMindTouch%252FIDF3%252FViews%252FTopic_hierarchy/contents?dream.out.format=json&origin=mt-web&pageid={}&draft=false&guid={}".format(BASE_URL, self.page_id, self.guid)
             try:
-                json = requests.get(url).json()
-                body = json.get("body", None)
+                r = requests.get(url, 
+                    headers={'x-deki-token': '{}'.format(self.x_deki_token),
+                    'x-deki-client': 'mindtouch-martian',
+                    'x-deki-requested-with': 'XMLHttpRequest'})
+                json_obj = r.json()
+                body = json_obj.get("body", None)
                 if body is not None:
                     return BeautifulSoup(body, 'html.parser')
             except Exception as e:
@@ -1060,7 +1077,7 @@ class PhetResource(object):
         self.description = None
 
     def download(self, download=True, base_path=None):
-        download_to = build_path([base_path])
+        # download_to = build_path([base_path])
         dst = tempfile.mkdtemp()
         download_file(
             self.source_id,
@@ -1214,11 +1231,8 @@ class LibreTextsChef(JsonTreeChef):
     SCRAPING_STAGE_OUTPUT_TPL = 'ricecooker_{subject}_json_tree.json'
     THUMBNAIL = ""
 
-    def __init__(self):
-        build_path([LibreTextsChef.TREES_DATA_DIR])
-        super(LibreTextsChef, self).__init__()
-
     def pre_run(self, args, options):
+        build_path([LibreTextsChef.TREES_DATA_DIR])
         self.download_css_js()
         channel_tree = self.scrape(args, options)
         self.write_tree_to_json(channel_tree)
@@ -1237,7 +1251,12 @@ class LibreTextsChef(JsonTreeChef):
         only_videos = options.get('--only-videos', None)
         download_video = options.get('--download-video', "1")
         subject = options.get('--subject', "phys")
+        overwrite = options.get('--overwrite', "1")
+        run_test = bool(int(options.get('--test', "0")))
+
         global DATA_DIR_SUBJECT
+        global OVERWRITE
+        OVERWRITE = bool(int(overwrite))
         DATA_DIR_SUBJECT = subject
         self.RICECOOKER_JSON_TREE = LibreTextsChef.SCRAPING_STAGE_OUTPUT_TPL.format(subject=subject)
         self.scrape_stage = os.path.join(LibreTextsChef.TREES_DATA_DIR, 
@@ -1265,17 +1284,18 @@ class LibreTextsChef(JsonTreeChef):
         global BASE_URL
         BASE_URL = SUBJECTS[subject]
 
-        # return test(channel_tree)
-
-        p_from_i, p_to_i = get_index_range(only_pages)
-        v_from_i, v_to_i = get_index_range(only_videos)
-        browser = Browser(BASE_URL)
-        links = browser.run(p_from_i, p_to_i)
-        collections = LinkCollection(links)
-        for collection_node in collections.to_node():
-            if collection_node is not None:
-                channel_tree["children"].append(collection_node)
-        return channel_tree
+        if run_test is True:
+            return test(channel_tree)
+        else:
+            p_from_i, p_to_i = get_index_range(only_pages)
+            v_from_i, v_to_i = get_index_range(only_videos)
+            browser = Browser(BASE_URL)
+            links = browser.run(p_from_i, p_to_i)
+            collections = LinkCollection(links)
+            for collection_node in collections.to_node():
+                if collection_node is not None:
+                    channel_tree["children"].append(collection_node)
+            return channel_tree
 
     def write_tree_to_json(self, channel_tree):
         write_tree_to_json_tree(self.scrape_stage, channel_tree)
