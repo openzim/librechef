@@ -911,10 +911,14 @@ class QueryPage:
     def body(self):
         if self.page_id is not None and self.guid is not None:
             url = "{}@api/deki/pages/=Template%253AMindTouch%252FIDF3%252FViews%252FTopic_hierarchy/contents?dream.out.format=json&origin=mt-web&pageid={}&draft=false&guid={}".format(BASE_URL, self.page_id, self.guid)
-            json = requests.get(url).json()
-            body = json.get("body", None)
-            if body is not None:
-                return BeautifulSoup(body, 'html.parser')
+            try:
+                json = requests.get(url).json()
+                body = json.get("body", None)
+                if body is not None:
+                    return BeautifulSoup(body, 'html.parser')
+            except Exception as e:
+                LOGGER.error(e)
+                return None
 
 
 class YouTubeResource(object):
@@ -1285,8 +1289,9 @@ def test(channel_tree):
     #c = CourseIndex("test", "https://www.flickr.com/photos/nate/")
     #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
     #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry")
-    #c.index(base_path)
-    #channel_tree["children"].append(c.to_node())
+    c = CourseIndex("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
+    c.index(base_path)
+    channel_tree["children"].append(c.to_node())
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
@@ -1294,7 +1299,8 @@ def test(channel_tree):
     #c = Chapter("test", "https://chem.libretexts.org/Bookshelves/General_Chemistry/Book%3A_ChemPRIME_(Moore_et_al.)/19Nuclear_Chemistry/19.14%3A_Nuclear_Power_Plants")
     #c = Chapter("test", "https://chem.libretexts.org/Homework_Exercises/Exercises%3A_General_Chemistry/Exercises%3A_Gray/Homework_09")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
-    c = Chapter("test", "https://chem.libretexts.org/Courses/Eastern_Wyoming_College/EWC%3A_Introductory_Chemistry_(Budhi)/01%3A_The_Chemical_World/1.5%3A_A_Beginning_Chemist_-_How_to_Succeed")
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/Eastern_Wyoming_College/EWC%3A_Introductory_Chemistry_(Budhi)/01%3A_The_Chemical_World/1.5%3A_A_Beginning_Chemist_-_How_to_Succeed")
+    c = Chapter("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
     return channel_tree
