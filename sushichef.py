@@ -35,7 +35,8 @@ from utils import remove_iframes, get_confirm_token, save_response_content
 from utils import link_to_text, remove_scripts
 import youtube_dl
 from urllib.parse import urlparse
-
+import sys
+sys.setrecursionlimit(1200)
 
 DATA_DIR = "chefdata"
 DATA_DIR_SUBJECT = ""
@@ -621,7 +622,7 @@ class AgendaOrFlatPage(object):
 
     def body(self):
         if self.soup is not None:
-            return self.soup.find("section", class_="mt-content-container")        
+            return self.soup.find("section", class_="mt-content-container")
 
     def clean(self, content):
         link_to_text(content)
@@ -647,8 +648,13 @@ class AgendaOrFlatPage(object):
         elif self.body() is not None:
             self.filepath = filepath
             body = self.clean(self.body())
-            self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(body))
-            self.write_css_js(self.filepath)
+            try:
+                self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(body))
+            except RuntimeError as e:
+                self.filepath = None
+                LOGGER.error(e)
+            else:
+                self.write_css_js(self.filepath)
         else:
             LOGGER.error("Empty body in {}".format(self.source_id))
 
@@ -695,7 +701,7 @@ class Chapter(AgendaOrFlatPage):
             return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../../MathJax/"
+        mathajax_path = "../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
@@ -853,11 +859,16 @@ class Chapter(AgendaOrFlatPage):
             mathjax_scripts = self.mathjax()
             body = self.clean(self.body())
             images = self.to_local_images(body)
-            self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
-            self.write_images(self.filepath, images)
-            self.write_css_js(self.filepath)
-            self.write_mathjax(self.filepath)
-            self.mathjax_dependences(self.filepath)
+            try:
+                self.write_index(self.filepath, '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(body, mathjax_scripts))
+            except RuntimeError as e:
+                self.filepath = None
+                LOGGER.error(e)
+            else:
+                self.write_images(self.filepath, images)
+                self.write_css_js(self.filepath)
+                self.write_mathjax(self.filepath)
+                self.mathjax_dependences(self.filepath)
 
     def topic_node(self):
         return dict(
@@ -1320,9 +1331,9 @@ def test(channel_tree):
     #c = CourseIndex("test", "https://www.flickr.com/photos/nate/")
     #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
     #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry")
-    c = CourseIndex("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
-    c.index(base_path)
-    channel_tree["children"].append(c.to_node())
+    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
+    #c.index(base_path)
+    #channel_tree["children"].append(c.to_node())
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
@@ -1331,7 +1342,8 @@ def test(channel_tree):
     #c = Chapter("test", "https://chem.libretexts.org/Homework_Exercises/Exercises%3A_General_Chemistry/Exercises%3A_Gray/Homework_09")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
     #c = Chapter("test", "https://chem.libretexts.org/Courses/Eastern_Wyoming_College/EWC%3A_Introductory_Chemistry_(Budhi)/01%3A_The_Chemical_World/1.5%3A_A_Beginning_Chemist_-_How_to_Succeed")
-    c = Chapter("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
+    #c = Chapter("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
+    c = Chapter("test", "https://phys.libretexts.org/Courses/University_of_California_Davis/UCD%3A_Physics_9A%2F%2F9HA_%E2%80%93_Classical_Mechanics/4%3A_Linear_Momentum/4.6%3A_Problem_Solving")
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
     return channel_tree
