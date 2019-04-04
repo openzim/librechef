@@ -327,7 +327,7 @@ class VisualizationPhEt(Topic):
 
 
 class VisualizationsSimulations(VisualizationPhEt):
-    title = "Visualizations_and_Simulations"
+    title = "Visualizations and Simulations"
 
 
 #class DemosTechniquesExp(Topic):
@@ -531,7 +531,7 @@ class CourseIndex(object):
                         agenda = AgendaOrFlatPage(course_link.text, course_link_href)
                         agenda.to_file(chapter_basepath)
                         self.add_node(agenda.to_node())
-                    elif course_link.text.strip() == "CalcPlot3D Interactive Figures":
+                    elif course_link.text.strip() in ["CalcPlot3D Interactive Figures", "GeoGebra Simulations"]:  # Not supported
                         pass
                     else:
                         course_index = CourseIndex(course_link.text, course_link_href, visited_urls=self.visited_urls)
@@ -1258,6 +1258,8 @@ class LibreTextsChef(JsonTreeChef):
         self.download_css_js()
         channel_tree = self.scrape(args, options)
         self.write_tree_to_json(channel_tree)
+        #subject = options.get('--subject', "phys")
+        #self.RICECOOKER_JSON_TREE = LibreTextsChef.SCRAPING_STAGE_OUTPUT_TPL.format(subject=subject)
 
     def download_css_js(self):
         r = requests.get("https://raw.githubusercontent.com/learningequality/html-app-starter/master/css/styles.css")
