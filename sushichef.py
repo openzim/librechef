@@ -151,10 +151,10 @@ class Collection:
         self.title = title
         self.source_id = link
         self.collection = {
-            #CourseLibreTexts.title: CourseLibreTexts,
-            #TextBooksTextMaps.title: TextBooksTextMaps,
-            #HomeworkExercices.title: HomeworkExercices,
-            #Homework.title: Homework,
+            CourseLibreTexts.title: CourseLibreTexts,
+            TextBooksTextMaps.title: TextBooksTextMaps,
+            HomeworkExercices.title: HomeworkExercices,
+            Homework.title: Homework,
             VisualizationPhEt.title: VisualizationPhEt,
             VisualizationsSimulations.title: VisualizationsSimulations
         }
@@ -577,7 +577,7 @@ class Chapter(AgendaOrFlatPage):
             return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../../MathJax/"
+        mathajax_path = "../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
