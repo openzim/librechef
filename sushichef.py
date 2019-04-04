@@ -58,8 +58,6 @@ sess = requests.Session()
 cache = FileCache('.webcache')
 basic_adapter = CacheControlAdapter(cache=cache)
 forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=cache)
-#sess.mount('http://', basic_adapter)
-#sess.mount(BASE_URL, forever_adapter)
 
 # Run constants
 ################################################################################
@@ -153,20 +151,19 @@ class Collection:
         self.title = title
         self.source_id = link
         self.collection = {
-            CourseLibreTexts.title: CourseLibreTexts,
-            TextBooksTextMaps.title: TextBooksTextMaps,
-            HomeworkExercices.title: HomeworkExercices,
-            Homework.title: Homework,
+            #CourseLibreTexts.title: CourseLibreTexts,
+            #TextBooksTextMaps.title: TextBooksTextMaps,
+            #HomeworkExercices.title: HomeworkExercices,
+            #Homework.title: Homework,
             VisualizationPhEt.title: VisualizationPhEt,
             VisualizationsSimulations.title: VisualizationsSimulations
         }
 
     def to_node(self):
         try:
-            # print(self.collection.keys(), self.title)
             Topic = self.collection[self.title]
         except KeyError:
-            print("Not Found", self.title)
+            LOGGER.error("Collection Not Found: {}".format(self.title))
         else:
             LOGGER.info(self.title)
             topic = Topic(self.source_id)
@@ -223,8 +220,6 @@ class CourseLibreTexts(Topic):
     title = "Campus Courses" # "Course LibreTexts"
 
     def units(self):
-        limit = 7
-        i = 0
         for url in self:
             topic = Topic(url.attrs.get("href"), title=url.text)
             for link in topic:
@@ -234,10 +229,6 @@ class CourseLibreTexts(Topic):
                 course_index.index(build_path(path))
                 topic.add_node(course_index.to_node())
             self.add_node(topic.to_node())
-            #if i > limit:
-            #    break
-            #print("--------------------", i, "------------------")
-            #i += 1
 
 
 class TextBooksTextMaps(Topic):
@@ -245,16 +236,6 @@ class TextBooksTextMaps(Topic):
 
     def populate_thumbnails(self):
         self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
-
-    #def units(self):
-    #    self.description = self.soup.find(lambda tag: tag.name == "p" and tag.findParent("section", class_="mt-content-container")).text
-    #    for content_link in self:
-    #        url = content_link.attrs.get("href")
-    #        text_book = TextBooksTextMapsCategory(content_link.text, url)
-    #        text_book.populate_thumbnails()
-    #        text_book.thumbnail = self.thumbnails_links.get(url, None)
-    #        text_book.courses()
-    #        self.tree_nodes[text_book.source_id] = text_book.to_node()
 
     def units(self):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
@@ -271,15 +252,6 @@ class HomeworkExercices(Topic):
 
     def populate_thumbnails(self):
         self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
-
-    #def units(self):
-    #    for content_link in self:
-    #        url = content_link.attrs.get("href")
-    #        text_book = TextBooksTextMapsCategory(content_link.text, url)
-    #        text_book.populate_thumbnails()
-    #        text_book.thumbnail = self.thumbnails_links.get(url, None)
-    #        text_book.courses()
-    #        self.tree_nodes[text_book.source_id] = text_book.to_node()
     
     def units(self):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
@@ -295,30 +267,14 @@ class Homework(HomeworkExercices):  # Alias for homework and exercices
     title = "Homework"
 
 
-#class Reference(Topic):
-#    title = "Reference"
-
-#    def units(self):
-#        index_base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, self.title])
-#        if self.soup:
-#            query = QueryPage(self.soup, self.source_id)
-#            course_body = query.body()
-#            if course_body is not None:
-#                for chapter_title in course_body.find_all("a"):
-#                    chapter = Chapter(chapter_title.text, chapter_title.attrs.get("href", ""))
-#                    chapter.to_file(index_base_path)
-#                    node = chapter.to_node()
-#                    self.tree_nodes[chapter.source_id] = node
-
-
 class VisualizationPhEt(Topic):
     title = "Ancillary Materials"
 
     def units(self):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
         for chapter_link in self:
-            #if chapter_link.text != "Reference":
-            #    continue
+            if chapter_link.text.strip() in ["CalcPlot3D Interactive Figures", "GeoGebra Simulations"]:
+                continue
             course_index = CourseIndex(chapter_link.text, chapter_link.attrs.get("href", ""))
             course_index.description = chapter_link.attrs.get("title")
             course_index.thumbnail = self.thumbnails_links.get(chapter_link.attrs.get("href", ""), None)
@@ -328,86 +284,6 @@ class VisualizationPhEt(Topic):
 
 class VisualizationsSimulations(VisualizationPhEt):
     title = "Visualizations and Simulations"
-
-
-#class DemosTechniquesExp(Topic):
-#    title = "Demos, Techniques, and Experiments"
-
-#    def units(self):
-#        index_base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, self.title])
-#        index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("dt", class_="mt-listing-detailed-title"))
-#        if len(index_links) == 0:
-#            index_links = self.soup.find_all(lambda tag: tag.name == "a" and tag.findParent("li", class_="mt-sortable-listing"))
-
-#        for chapter_link in index_links:
-#            chapter = Chapter(chapter_link.text, chapter_link.attrs.get("href", ""))
-#            chapter.to_file(index_base_path)
-#            self.tree_nodes[chapter.source_id] = chapter.to_node()
-    
-
-#class TextBooksTextMapsCategory(object):
-#    def __init__(self, title, url):
-#        self.source_id = url
-#        self.title = title
-#        self.lang = "en"
-#        self.tree_nodes = OrderedDict()
-#        self.thumbnails_links = {}
-#        self.soup = self.to_soup()
-#        LOGGER.info("--- " + self.title)
-
-#    def to_soup(self):
-#        document = download(self.source_id)
-#        if document is not None:
-#            return BeautifulSoup(document, 'html5lib') #html5lib
-
-#    @property
-#    def thumbnail(self):
-#        return self._thumbnail
-
-#    @thumbnail.setter
-#    def thumbnail(self, url):
-#        self._thumbnail = save_thumbnail(url, self.title)
-
-#    def populate_thumbnails(self):
-#        self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
-
-#    def courses(self):
-#        for link in Browser(self.source_id).run():
-            #if link.text != "11: Dimensions":
-            #    continue
-#            url = link.attrs.get("href")
-#            course_index = CourseIndex(link.text, url)
-#            course_index.description = link.attrs.get("title")
-#            course_index.thumbnail = self.thumbnails_links.get(url, None)
-#            path = [DATA_DIR, DATA_DIR_SUBJECT, link.text]
-#            base_path = build_path(path)
-#            course_index.index(base_path)
-#            node = course_index.to_node()
-#            if len(node["children"]) == 0:
-#                chapter = Chapter(link.text, link.get("href", ""))
-#                chapter.to_file(base_path)
-#                node = chapter.to_node()
-            # self.tree_nodes[course_index.source_id] = node
-#            self.add_node(node)
-            #break
-        ## CHAPTER INSIDE
-
-#    def add_node(self, node):
-#        if node is not None:
-#            self.tree_nodes[node["source_id"]] = node
-
-#    def to_node(self):
-#        return dict(
-#            kind=content_kinds.TOPIC,
-#            source_id=self.title,
-#            title=self.title,
-#            description="",
-#            language=self.lang,
-#            author="",
-#            thumbnail = self.thumbnail,
-#            license=LICENSE,
-#            children=list(self.tree_nodes.values())
-#        )
         
 
 def thumbnails_links(soup, tag, class_):
@@ -701,7 +577,7 @@ class Chapter(AgendaOrFlatPage):
             return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../MathJax/"
+        mathajax_path = "../../MathJax/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
@@ -1327,24 +1203,8 @@ class LibreTextsChef(JsonTreeChef):
 
 def test(channel_tree):
     base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
-    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Sacramento_City_College/SCC%3A_Chem_400_-_General_Chemistry_I/Text/01%3A_Matter%2C_Measurement%2C_and_Problem_Solving")
-    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)")
-    #c = CourseIndex("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
-    #c = CourseIndex("test", "https://www.flickr.com/photos/nate/")
-    #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry/Solutions_to_Chapter_3_exercises")
-    #c = CourseIndex("test", "https://chem.libretexts.org/Bookshelves/Organic_Chemistry/Book%3A_Organic_Chemistry_with_a_Biological_Emphasis_(Soderberg)/Chapter_03%3A_Conformations_and_Stereochemistry")
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
     #c.index(base_path)
-    #channel_tree["children"].append(c.to_node())
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.02%3A_Understanding_Atomic_Spectra")
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/04%3A_Valence_Electrons_and_Bonding/4.09%3A_Free_Radicals_and_the_environment")
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/Athabasca_University/Chemistry_360%3A_Organic_Chemistry_II/Chapter_17%3A_Alcohols_and_Phenols/17.02_Properties_of_Alcohols_and_Phenols")
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/Furman_University/CHM101%3A_Chemistry_and_Global_Awareness_(Gordon)/08%3A_Water_chemistry/7.04%3A_Chemical_Contamination_of_Water")
-    #c = Chapter("test", "https://chem.libretexts.org/Bookshelves/General_Chemistry/Book%3A_ChemPRIME_(Moore_et_al.)/19Nuclear_Chemistry/19.14%3A_Nuclear_Power_Plants")
-    #c = Chapter("test", "https://chem.libretexts.org/Homework_Exercises/Exercises%3A_General_Chemistry/Exercises%3A_Gray/Homework_09")
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/Purdue/Purdue_Chem_26100%3A_Organic_Chemistry_I_(Wenthold)/Chapter_05%3A_The_Study_of_Chemical_Reactions/Chapter_5_Outline")
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/Eastern_Wyoming_College/EWC%3A_Introductory_Chemistry_(Budhi)/01%3A_The_Chemical_World/1.5%3A_A_Beginning_Chemist_-_How_to_Succeed")
-    #c = Chapter("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
     c = Chapter("test", "https://phys.libretexts.org/Courses/University_of_California_Davis/UCD%3A_Physics_9A%2F%2F9HA_%E2%80%93_Classical_Mechanics/4%3A_Linear_Momentum/4.6%3A_Problem_Solving")
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
