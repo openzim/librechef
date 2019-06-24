@@ -5,20 +5,12 @@ from pathlib import Path
 from bs4 import Tag
 
 
-<<<<<<< HEAD
 def dir_exists(filepath):
-=======
-def if_dir_exists(filepath):
->>>>>>> 820b355ca217ebc28623bc70e7337cea47545626
     file_ = Path(filepath)
     return file_.is_dir()
 
 
-<<<<<<< HEAD
 def file_exists(filepath):
-=======
-def if_file_exists(filepath):
->>>>>>> 820b355ca217ebc28623bc70e7337cea47545626
     my_file = Path(filepath)
     return my_file.is_file()
 
@@ -62,11 +54,7 @@ def get_name_from_url_no_ext(url):
 
 
 def clone_repo(git_url, repo_dir):
-<<<<<<< HEAD
     if not dir_exists(repo_dir):
-=======
-    if not if_dir_exists(repo_dir):
->>>>>>> 820b355ca217ebc28623bc70e7337cea47545626
         print("Cloning repository {}".format(git_url))
         Repo.clone_from(git_url, repo_dir)
     else:
@@ -78,11 +66,7 @@ def clone_repo(git_url, repo_dir):
 
 def build_path(levels):
     path = os.path.join(*levels)
-<<<<<<< HEAD
     if not dir_exists(path):
-=======
-    if not if_dir_exists(path):
->>>>>>> 820b355ca217ebc28623bc70e7337cea47545626
         os.makedirs(path)
     return path
 
