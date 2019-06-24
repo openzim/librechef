@@ -58,6 +58,29 @@ cache = FileCache('.webcache')
 basic_adapter = CacheControlAdapter(cache=cache)
 forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=cache)
 
+BASE_URL = "https://phys.libretexts.org/"
+
+DATA_DIR = "chefdata"
+COPYRIGHT_HOLDER = "CSU and Merlot"
+LICENSE = get_license(licenses.CC_BY_NC_SA, 
+        copyright_holder=COPYRIGHT_HOLDER).as_dict()
+AUTHOR = "CSU and Merlot"
+
+LOGGER = logging.getLogger()
+__logging_handler = logging.StreamHandler()
+LOGGER.addHandler(__logging_handler)
+LOGGER.setLevel(logging.INFO)
+
+DOWNLOAD_VIDEOS = True
+DOWNLOAD_FILES = True
+
+sess = requests.Session()
+cache = FileCache('.webcache')
+basic_adapter = CacheControlAdapter(cache=cache)
+forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=cache)
+sess.mount('http://', basic_adapter)
+sess.mount(BASE_URL, forever_adapter)
+
 # Run constants
 ################################################################################
 CHANNEL_NAME = "Libretext Open Educational Resource Library"              # Name of channel
@@ -1199,6 +1222,17 @@ class LibreTextsChef(JsonTreeChef):
     def write_tree_to_json(self, channel_tree):
         write_tree_to_json_tree(self.scrape_stage, channel_tree)
 
+class PhysLibreTextsChef(JsonTreeChef):
+    HOSTNAME = BASE_URL
+    TREES_DATA_DIR = os.path.join(DATA_DIR, 'trees')
+    SCRAPING_STAGE_OUTPUT_TPL = 'ricecooker_json_tree.json'
+    THUMBNAIL = ""
+
+    def __init__(self):
+        build_path([PhysLibreTextsChef.TREES_DATA_DIR])
+        self.scrape_stage = os.path.join(PhysLibreTextsChef.TREES_DATA_DIR, 
+                                PhysLibreTextsChef.SCRAPING_STAGE_OUTPUT_TPL)
+        super(PhysLibreTextsChef, self).__init__()
 
 def test(channel_tree):
     base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
@@ -1214,3 +1248,5 @@ def test(channel_tree):
 if __name__ == '__main__':
     chef = LibreTextsChef()
     chef.main()
+
+
