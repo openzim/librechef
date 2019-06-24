@@ -32,55 +32,13 @@ into a format that can be imported into Kolibri Studio.
 
 
 
-
 ## Usage
 
-TODO: Explain how to run the LibreTexts chef
-
-      export SOMEVAR=someval
-      ./script.py -v --option2 --kwoard="val"
-
-
-
-## Description
-
-A sushi chef script is responsible for importing content into Kolibri Studio.
-The [Rice Cooker](https://github.com/learningequality/ricecooker) library provides
-all the necessary methods for uploading the channel content to Kolibri Studio,
-as well as helper functions and utilities.
-
-A sushi chef script has been started for you in `sushichef.py`.
-
-Sushi chef docs can be found [here](https://github.com/learningequality/ricecooker/blob/master/README.md).
-
-_For more sushi chef examples, see `examples/openstax_sushichef.py` (json) and
- `examples/wikipedia_sushichef.py` (html) and also the examples/ dir inside the ricecooker repo._
-
-
----
-
-
-## Rubric
-
-_Please make sure your final chef matches the following standards._
-
-
-
-#### General Standards
-1. Does the code work (no infinite loops, exceptions thrown, etc.)?
-1. Are the `source_id`s determined consistently (based on foreign database identifiers or permanent url paths)?
-1. Is there documentation on how to run the script (include command line parameters to use)?
-
-#### Coding Standards
-1. Are there no obvious runtime or memory inefficiencies in the code?
-1. Are the functions succinct?
-1. Are clarifying comments provided where needed?
-1. Are the git commits easy to understand?
-1. Is there no unnecessary nested `if` or `for` loops?
-1. Are variables named descriptively (e.g. `path` vs `p`)?
-
-#### Python Standards
-1. Is the code compatible with Python 3?
-1. Does the code use common standard library functions where needed?
-1. Does the code use common python idioms where needed (with/open, try/except, etc.)?
-
+     ./sushichef.py -v --reset --token=".token" --subject=chem
+     ./sushichef.py -v --reset --token=".token" --subject=math
+     ./sushichef.py -v --reset --token=".token" --subject=phys
+     ./sushichef.py -v --reset --token=".token" --subject=eng
+     ./sushichef.py -v --reset --token=".token" --subject=bio
+     
+## MathJax
+MathJax files must be in a upper level folder i.e ../ or will raise an error. 
