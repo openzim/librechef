@@ -61,8 +61,8 @@ forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=c
 
 # Run constants
 ################################################################################
-CHANNEL_NAME = "Libretext Open Educational Resource Library"              # Name of channel
-CHANNEL_SOURCE_ID = "sushi-chef-{channel_name}-libretext"    # Channel's unique id
+CHANNEL_NAME = "LibreTexts {subject}"                 # Fallback for channel name
+CHANNEL_SOURCE_ID = "sushi-chef-{subject}-libretext" # Channel's unique id
 CHANNEL_DOMAIN = ""          # Who is providing the content
 CHANNEL_LANGUAGE = "en"      # Language of channel
 CHANNEL_DESCRIPTION = None                                  # Description of the channel (optional)
@@ -103,6 +103,14 @@ SUBJECTS = {
     "bio": "https://bio.libretexts.org/",
     "eng": "https://eng.libretexts.org/",
     "math": "https://math.libretexts.org/"
+}
+
+CHANNEL_NAMES = {
+    "phys": "LibreTexts Physics",
+    "chem": "LibreTexts Chemistry",
+    "bio": "LibreTexts Biology",
+    "eng": "LibreTexts Engineering",
+    "math": "LibreTexts Mathematics",
 }
 
 
@@ -1170,10 +1178,9 @@ class LibreTextsChef(JsonTreeChef):
         global channel_tree
         channel_tree = dict(
                 source_domain=SUBJECTS[subject],
-                source_id=CHANNEL_SOURCE_ID.format(channel_name=subject),
-                title=CHANNEL_NAME,
-                description="""Offers a “living library,” curated by students, faculty, and outside experts, of open-source textbooks and curricular materials to support popular secondary and college-level academic subjects, primarily in mathematics and sciences."""
-[:400], #400 UPPER LIMIT characters allowed 
+                source_id=CHANNEL_SOURCE_ID.format(subject=subject),
+                title=CHANNEL_NAMES.get(subject, CHANNEL_NAME.format(subject=subject)),
+                description="""Offers a “living library,” curated by students, faculty, and outside experts, of open-source textbooks and curricular materials to support popular secondary and college-level academic subjects, primarily in mathematics and sciences."""[:400],
                 thumbnail=SUBJECTS_THUMBS[subject],
                 author=AUTHOR,
                 language=CHANNEL_LANGUAGE,
@@ -1200,6 +1207,7 @@ class LibreTextsChef(JsonTreeChef):
     def write_tree_to_json(self, channel_tree):
         write_tree_to_json_tree(self.scrape_stage, channel_tree)
 
+
 def test(channel_tree):
     base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
     #c = CourseIndex("test", "https://chem.libretexts.org/Courses/University_of_California%2C_Irvine/UCI%3A_General_Chemistry_1C_(OpenChem)/015Review_on_Cell_Potential_(OpenChem)/xSolution")
@@ -1208,6 +1216,8 @@ def test(channel_tree):
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
     return channel_tree
+
+
 
 # CLI
 ################################################################################
