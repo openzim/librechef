@@ -225,7 +225,7 @@ class Topic(object):
 
 
 class CourseLibreTexts(Topic):
-    title = "Campus Courses" # "Course LibreTexts"
+    title = "Course Shells" # previously "Campus Courses", "Course LibreTexts"
 
     def units(self):
         for url in self:
