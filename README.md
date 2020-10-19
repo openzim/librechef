@@ -29,16 +29,17 @@ into a format that can be imported into Kolibri Studio.
          * Activate the virtualenv called `venv` by running: `.\venv\Scripts\activate`
 
 * Run `pip install -r requirements.txt` to install the required python libraries.
+* Note - In case you get import errors while running, you need to update numpy to the latest version, even if it gives an incompatability warning
 
 
 
 ## Usage
 
-     ./sushichef.py -v --reset --token=".token" --subject=chem
-     ./sushichef.py -v --reset --token=".token" --subject=math
-     ./sushichef.py -v --reset --token=".token" --subject=phys
-     ./sushichef.py -v --reset --token=".token" --subject=eng
-     ./sushichef.py -v --reset --token=".token" --subject=bio
+     ./sushichef.py -v --reset --token=".token" --subject=chem --channel-id=channelid
+     ./sushichef.py -v --reset --token=".token" --subject=math --channel-id=channelid
+     ./sushichef.py -v --reset --token=".token" --subject=phys --channel-id=channelid
+     ./sushichef.py -v --reset --token=".token" --subject=eng --channel-id=channelid
+     ./sushichef.py -v --reset --token=".token" --subject=bio --channel-id=channelid
      
 ## MathJax
 MathJax files must be in a upper level folder i.e ../ or will raise an error. 
