@@ -2,3 +2,4 @@ ricecooker
 pafy
 markdown2
 GitPython
+numpy
