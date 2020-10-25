@@ -601,11 +601,12 @@ class AgendaOrFlatPage(object):
             self.filepath = filepath
             body = self.clean(self.body())
             try:
+                string_to_write = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(
+                    body
+                )
                 self.write_index(
                     self.filepath,
-                    '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(
-                        body
-                    ),
+                    string_to_write.encode("utf-8", "surrogateescape"),
                 )
             except RuntimeError as e:
                 self.filepath = None
@@ -849,11 +850,12 @@ class Chapter(AgendaOrFlatPage):
             body = self.clean(self.body())
             images = self.to_local_images(body)
             try:
+                string_to_write = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(
+                    body, mathjax_scripts
+                )
                 self.write_index(
                     self.filepath,
-                    '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(
-                        body, mathjax_scripts
-                    ),
+                    string_to_write.encode("utf-8", "surrogateescape"),
                 )
             except RuntimeError as e:
                 self.filepath = None
