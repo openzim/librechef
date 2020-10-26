@@ -601,11 +601,12 @@ class AgendaOrFlatPage(object):
             self.filepath = filepath
             body = self.clean(self.body())
             try:
+                string_to_write = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(
+                    body
+                )
                 self.write_index(
                     self.filepath,
-                    '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(
-                        body
-                    ),
+                    string_to_write.encode("utf-8", errors="surrogatepass"),
                 )
             except RuntimeError as e:
                 self.filepath = None
@@ -849,11 +850,12 @@ class Chapter(AgendaOrFlatPage):
             body = self.clean(self.body())
             images = self.to_local_images(body)
             try:
+                string_to_write = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(
+                    body, mathjax_scripts
+                )
                 self.write_index(
                     self.filepath,
-                    '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(
-                        body, mathjax_scripts
-                    ),
+                    string_to_write.encode("utf-8", errors="surrogatepass"),
                 )
             except RuntimeError as e:
                 self.filepath = None
@@ -1398,7 +1400,7 @@ def test(channel_tree):
     base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
     c = Chapter(
         "test",
-        "https://phys.libretexts.org/Courses/University_of_California_Davis/UCD%3A_Physics_9A%2F%2F9HA_%E2%80%93_Classical_Mechanics/4%3A_Linear_Momentum/4.6%3A_Problem_Solving",
+        "https://eng.libretexts.org/Bookshelves/Computer_Science/Book%3A_Eloquent_JavaScript_(Haverbeke)/Part_1%3A_Language/05%3A_Higher-order_Functions",
     )
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
