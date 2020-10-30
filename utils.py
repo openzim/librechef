@@ -3,6 +3,7 @@ import ntpath
 import os
 from pathlib import Path
 from bs4 import Tag
+from slugify import slugify
 
 
 def dir_exists(filepath):
@@ -65,7 +66,8 @@ def clone_repo(git_url, repo_dir):
 
 
 def build_path(levels):
-    path = os.path.join(*levels)
+    slugged_levels = [slugify(level) for level in levels]
+    path = os.path.join(*slugged_levels)
     if not dir_exists(path):
         os.makedirs(path)
     return path
