@@ -3,3 +3,4 @@ pafy
 markdown2
 GitPython
 numpy
+python-slugify

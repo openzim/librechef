@@ -26,6 +26,8 @@ from ricecooker.utils.caching import (
 from ricecooker.utils.html import download_file
 from ricecooker.utils.jsontrees import write_tree_to_json_tree, SUBTITLES_FILE
 from ricecooker.utils.zip import create_predictable_zip
+from slugify import slugify
+
 import tempfile
 import time
 from urllib.error import URLError
@@ -593,7 +595,7 @@ class AgendaOrFlatPage(object):
             zipper.write_index_contents(content)
 
     def to_file(self, base_path):
-        filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        filepath = "{path}/{name}.zip".format(path=base_path, name=slugify(self.title))
         if file_exists(filepath) and OVERWRITE is False:
             self.filepath = filepath
             LOGGER.info("Not overwrited file {}".format(self.filepath))
@@ -832,7 +834,7 @@ class Chapter(AgendaOrFlatPage):
             zipper.write_contents("MathJax.js", content, directory="js/")
 
     def to_file(self, base_path):
-        filepath = "{path}/{name}.zip".format(path=base_path, name=self.title)
+        filepath = "{path}/{name}.zip".format(path=base_path, name=slugify(self.title))
         if self.body() is not None:
             self.video_nodes = self.build_video_nodes(base_path, self.body())
             self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
@@ -1397,10 +1399,11 @@ class LibreTextsChef(JsonTreeChef):
 
 
 def test(channel_tree):
-    base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test"])
+    base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test one: a3"])
     c = Chapter(
-        "test",
-        "https://eng.libretexts.org/Bookshelves/Computer_Science/Book%3A_Eloquent_JavaScript_(Haverbeke)/Part_1%3A_Language/05%3A_Higher-order_Functions",
+        "test: one : one",
+        #"https://eng.libretexts.org/Bookshelves/Computer_Science/Book%3A_Eloquent_JavaScript_(Haverbeke)/Part_1%3A_Language/05%3A_Higher-order_Functions",
+        "https://eng.libretexts.org/Bookshelves/Materials_Science/TLP_Library_I/03%3A_Atomic_Force_Microscopy/3.07%3A_Scanner_Related_Artefacts",
     )
     c.to_file(base_path)
     channel_tree["children"].append(c.to_node())
