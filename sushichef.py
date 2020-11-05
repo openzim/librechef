@@ -26,7 +26,6 @@ from ricecooker.utils.caching import (
 from ricecooker.utils.html import download_file
 from ricecooker.utils.jsontrees import write_tree_to_json_tree, SUBTITLES_FILE
 from ricecooker.utils.zip import create_predictable_zip
-from slugify import slugify
 
 import tempfile
 import time
@@ -41,6 +40,7 @@ from utils import link_to_text, remove_scripts
 import youtube_dl
 from urllib.parse import urlparse
 import sys
+import xxhash
 
 sys.setrecursionlimit(1200)
 
@@ -128,6 +128,10 @@ SUBJECTS_THUMBS = {
     "eng": "https://eng.libretexts.org/@api/deki/files/1442/libretexts_section_complete_engineering_325.png",
     "math": "https://math.libretexts.org/@api/deki/files/1742/libretexts_section_complete_math350_sigma.png",
 }
+
+
+def hashed(string_to_hash):
+    return xxhash.xxh64(string_to_hash.encode("utf-8")).hexdigest()
 
 
 class Browser:
@@ -246,7 +250,12 @@ class CourseLibreTexts(Topic):
             for link in topic:
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
-                path = [DATA_DIR, DATA_DIR_SUBJECT, topic.title, link.text]
+                path = [
+                    DATA_DIR,
+                    DATA_DIR_SUBJECT,
+                    hashed(topic.title),
+                    hashed(link.text),
+                ]
                 course_index.index(build_path(path))
                 topic.add_node(course_index.to_node())
             self.add_node(topic.to_node())
@@ -259,7 +268,7 @@ class TextBooksTextMaps(Topic):
         self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
     def units(self):
-        base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
+        base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
         for chapter_link in self:
             course_index = CourseIndex(
                 chapter_link.text, chapter_link.attrs.get("href", "")
@@ -268,7 +277,7 @@ class TextBooksTextMaps(Topic):
             course_index.thumbnail = self.thumbnails_links.get(
                 chapter_link.attrs.get("href", ""), None
             )
-            course_index.index(build_path(base_path + [chapter_link.text]))
+            course_index.index(build_path(base_path + [hashed(chapter_link.text)]))
             self.add_node(course_index.to_node())
 
 
@@ -279,7 +288,7 @@ class HomeworkExercices(Topic):
         self.thumbnails_links = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
     def units(self):
-        base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
+        base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
         for chapter_link in self:
             course_index = CourseIndex(
                 chapter_link.text, chapter_link.attrs.get("href", "")
@@ -288,7 +297,7 @@ class HomeworkExercices(Topic):
             course_index.thumbnail = self.thumbnails_links.get(
                 chapter_link.attrs.get("href", ""), None
             )
-            course_index.index(build_path(base_path + [chapter_link.text]))
+            course_index.index(build_path(base_path + [hashed(chapter_link.text)]))
             self.add_node(course_index.to_node())
 
 
@@ -300,7 +309,7 @@ class VisualizationPhEt(Topic):
     title = "Ancillary Materials"
 
     def units(self):
-        base_path = [DATA_DIR, DATA_DIR_SUBJECT, self.title]
+        base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
         for chapter_link in self:
             if chapter_link.text.strip() in [
                 "CalcPlot3D Interactive Figures",
@@ -314,7 +323,7 @@ class VisualizationPhEt(Topic):
             course_index.thumbnail = self.thumbnails_links.get(
                 chapter_link.attrs.get("href", ""), None
             )
-            course_index.index(build_path(base_path + [chapter_link.text]))
+            course_index.index(build_path(base_path + [hashed(chapter_link.text)]))
             self.add_node(course_index.to_node())
 
 
@@ -450,7 +459,7 @@ class CourseIndex(object):
                 continue
             self.visited_urls.add(course_link_href)
             document = download(course_link_href)
-            chapter_basepath = build_path([index_base_path, course_link.text])
+            chapter_basepath = build_path([index_base_path, hashed(course_link.text)])
             if document is not None:
                 query = QueryPage(
                     BeautifulSoup(document, "html.parser"), course_link_href
@@ -484,7 +493,7 @@ class CourseIndex(object):
                             visited_urls=self.visited_urls,
                         )
                         result = course_index.index(
-                            build_path([base_path, course_link.text])
+                            build_path([base_path, hashed(course_link.text)])
                         )
                         if result is None:
                             course_index_node = course_index.to_node()
@@ -595,7 +604,7 @@ class AgendaOrFlatPage(object):
             zipper.write_index_contents(content)
 
     def to_file(self, base_path):
-        filepath = "{path}/{name}.zip".format(path=base_path, name=slugify(self.title))
+        filepath = "{path}/{name}.zip".format(path=base_path, name=hashed(self.title))
         if file_exists(filepath) and OVERWRITE is False:
             self.filepath = filepath
             LOGGER.info("Not overwrited file {}".format(self.filepath))
@@ -834,7 +843,7 @@ class Chapter(AgendaOrFlatPage):
             zipper.write_contents("MathJax.js", content, directory="js/")
 
     def to_file(self, base_path):
-        filepath = "{path}/{name}.zip".format(path=base_path, name=slugify(self.title))
+        filepath = "{path}/{name}.zip".format(path=base_path, name=hashed(self.title))
         if self.body() is not None:
             self.video_nodes = self.build_video_nodes(base_path, self.body())
             self.pdf_nodes = self.build_pdfs_nodes(base_path, self.body())
@@ -1399,10 +1408,10 @@ class LibreTextsChef(JsonTreeChef):
 
 
 def test(channel_tree):
-    base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, "test one: a3"])
+    base_path = build_path([DATA_DIR, DATA_DIR_SUBJECT, hashed("test one: a3")])
     c = Chapter(
         "test: one : one",
-        #"https://eng.libretexts.org/Bookshelves/Computer_Science/Book%3A_Eloquent_JavaScript_(Haverbeke)/Part_1%3A_Language/05%3A_Higher-order_Functions",
+        # "https://eng.libretexts.org/Bookshelves/Computer_Science/Book%3A_Eloquent_JavaScript_(Haverbeke)/Part_1%3A_Language/05%3A_Higher-order_Functions",
         "https://eng.libretexts.org/Bookshelves/Materials_Science/TLP_Library_I/03%3A_Atomic_Force_Microscopy/3.07%3A_Scanner_Related_Artefacts",
     )
     c.to_file(base_path)
