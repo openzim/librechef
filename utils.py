@@ -72,7 +72,9 @@ def build_path(levels):
 
 
 def get_video_resolution_format(video, maxvres=720, ext="mp4"):
-    formats = [(int(s.resolution.split("x")[1]), s.extension, s) for s in video.videostreams]
+    formats = [
+        (int(s.resolution.split("x")[1]), s.extension, s) for s in video.videostreams
+    ]
     formats = sorted(formats, key=lambda x: x[0])
     best = None
     for r, x, stream in formats:
@@ -119,7 +121,7 @@ def remove_iframes(content):
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
+        if key.startswith("download_warning"):
             return value
     return None
 
@@ -143,4 +145,4 @@ def link_to_text(content):
                     pass
                 elif url.startswith("http") or url.startswith("/"):
                     tag.wrap(span)
-                    span.insert(1, " ("+url+")")
+                    span.insert(1, " (" + url + ")")

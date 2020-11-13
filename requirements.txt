@@ -1,4 +1,6 @@
-ricecooker>=0.6.30
-pafy==0.5.3.1
-markdown2==2.3.5
-GitPython==2.1.9
+ricecooker
+pafy
+markdown2
+GitPython
+numpy
+xxhash
