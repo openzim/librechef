@@ -81,7 +81,7 @@ forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=c
 This is the jerarchery in libretext.
 
 - Collection (CourseLibreText, TextBook, Homework)
-  - CategoryA 
+  - CategoryA
      * CategoryB (optional)
        * Chapter (optional)
        - Index
@@ -96,7 +96,7 @@ This is the jerarchery in libretext.
      - CategoryB
         - Visualization
 
-- Collection (Ancillary Materials) 
+- Collection (Ancillary Materials)
   - CategoryA
      * Category B
      - Index
@@ -422,7 +422,7 @@ class CourseIndex(object):
             while retry_times < 5 and self.soup is None:
                 self.soup = self.to_soup()
                 LOGGER.info("Retrying")
-                retry += 1
+                retry_times += 1
             if self.soup is None:
                 LOGGER.error("Could not download content ")
                 return
