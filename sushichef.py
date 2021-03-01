@@ -78,7 +78,7 @@ forever_adapter = CacheControlAdapter(heuristic=CacheForeverHeuristic(), cache=c
 
 
 """
-This is the jerarchery in libretext.
+This is the hierarchy in libretext.
 
 - Collection (CourseLibreText, TextBook, Homework)
   - CategoryA
@@ -105,28 +105,52 @@ This is the jerarchery in libretext.
 
 
 SUBJECTS = {
-    "phys": "https://phys.libretexts.org/",
-    "chem": "https://chem.libretexts.org/",
     "bio": "https://bio.libretexts.org/",
+    "biz": "https://biz.libretexts.org/",
+    "chem": "https://chem.libretexts.org/",
     "eng": "https://eng.libretexts.org/",
+    # "espanol": "https://espanol.libretexts.org/", #Skipped due to weird structure
+    "geo": "https://geo.libretexts.org/",
+    "human": "https://human.libretexts.org/",
     "math": "https://math.libretexts.org/",
+    "med": "https://med.libretexts.org/",
+    "phys": "https://phys.libretexts.org/",
+    "socialsci": "https://socialsci.libretexts.org/",
+    "stats": "https://stats.libretexts.org/",
+    "workforce": "https://workforce.libretexts.org/"
 }
 
 CHANNEL_NAMES = {
-    "phys": "LibreTexts Physics",
-    "chem": "LibreTexts Chemistry",
     "bio": "LibreTexts Biology",
+    "biz": "LibreTexts Business",
+    "chem": "LibreTexts Chemistry",
     "eng": "LibreTexts Engineering",
+    # "espanol": "LibreTexts Biology", #Skipped due to weird structure
+    "geo": "LibreTexts Geosciences",
+    "human": "LibreTexts Humanities",
     "math": "LibreTexts Mathematics",
+    "med": "LibreTexts Medicine",
+    "phys": "LibreTexts Physics",
+    "socialsci": "LibreTexts Social Sciences",
+    "stats": "LibreTexts Statistics",
+    "workforce": "LibreTexts Workforce"
 }
 
 
 SUBJECTS_THUMBS = {
-    "phys": "https://phys.libretexts.org/@api/deki/files/3289/libretexts_section_complete_phys350.png",
-    "chem": "https://chem.libretexts.org/@api/deki/files/85425/libretexts_section_complete_chem_sm_124.png",
     "bio": "https://bio.libretexts.org/@api/deki/files/8208/libretexts_section_complete_bio_header.png",
+    "biz": "https://biz.libretexts.org/@api/deki/files/170/libretexts_section_complete_biz_header.png",
+    "chem": "https://chem.libretexts.org/@api/deki/files/85425/libretexts_section_complete_chem_sm_124.png",
     "eng": "https://eng.libretexts.org/@api/deki/files/1442/libretexts_section_complete_engineering_325.png",
+    # "espanol": "https://espanol.libretexts.org/@api/deki/files/2/libretexts_section_complete_esp_header.png", #Skipped due to weird structure
+    "geo": "https://geo.libretexts.org/@api/deki/files/357/libretexts_section_complete_geo350.png",
+    "human": "https://human.libretexts.org/@api/deki/files/126/libretexts_section_complete_hum_header.png",
     "math": "https://math.libretexts.org/@api/deki/files/1742/libretexts_section_complete_math350_sigma.png",
+    "med": "https://med.libretexts.org/@api/deki/files/1219/libretexts_section_complete_med124.png",
+    "phys": "https://phys.libretexts.org/@api/deki/files/3289/libretexts_section_complete_phys350.png",
+    "socialsci": "https://socialsci.libretexts.org/@api/deki/files/242/libretexts_section_complete_social350.png",
+    "stats": "https://stats.libretexts.org/@api/deki/files/526/libretexts_section_complete_stats350_curve.png",
+    "workforce": "https://workforce.libretexts.org/@api/deki/files/4438/libretexts_section_complete_workforce_header.png"
 }
 
 
