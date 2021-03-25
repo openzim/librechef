@@ -170,7 +170,8 @@ class Browser:
     def __init__(self, url):
         self.url = url
 
-    def run(self, from_i=1, to_i=None):
+    def run(self):
+        """ returns all link nodes from URL """
         document = download(self.url)
         if document is not None:
             soup = BeautifulSoup(document, "html5lib")  # html.parser
@@ -187,19 +188,11 @@ class LinkCollection:
 
     def to_collection(self):
         self.collection = []
-        nb_link = 0
         for link in self.links:
-            if nb_link > 2:
-                break
-            nb_link += 1
             self.collection.append(Collection(link.text, link.attrs.get("href", "")))
 
     def to_node(self):
-        nb_col = 0
         for collection in self.collection:
-            if nb_col > 2:
-                break
-            nb_col += 1
             yield collection.to_node()
 
 
@@ -223,7 +216,6 @@ class Collection:
             VisualizationPhEt.title: VisualizationPhEt,
             VisualizationsSimulations.title: VisualizationsSimulations,
         }
-        self.nb_topic = 2
 
     def to_node(self):
         try:
@@ -286,14 +278,9 @@ class CourseLibreTexts(Topic):
     title = "Course Shells"  # previously "Campus Courses", "Course LibreTexts"
 
     def units(self):
-        nb_url = 0
         for url in self:
-            if nb_url > 2:
-                break
-            nb_url += 1
             topic = Topic(url.attrs.get("href"), title=url.text)
             for link in topic:
-                print("CourseLibreTexts", link)
                 course_index = CourseIndex(link.text, link.attrs.get("href"))
                 course_index.description = link.attrs.get("title")
                 path = [
@@ -315,11 +302,7 @@ class TextBooksTextMaps(Topic):
 
     def units(self):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
-        nb_chapter = 0
         for chapter_link in self:
-            if nb_chapter > 2:
-                break
-            nb_chapter += 1
             course_index = CourseIndex(
                 chapter_link.text, chapter_link.attrs.get("href", "")
             )
@@ -339,11 +322,7 @@ class HomeworkExercices(Topic):
 
     def units(self):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
-        nb_chapter = 0
         for chapter_link in self:
-            if nb_chapter > 2:
-                break
-            nb_chapter += 1
             course_index = CourseIndex(
                 chapter_link.text, chapter_link.attrs.get("href", "")
             )
@@ -364,11 +343,7 @@ class VisualizationPhEt(Topic):
 
     def units(self):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
-        nb_chapter = 0
         for chapter_link in self:
-            if nb_chapter > 2:
-                break
-            nb_chapter += 1
             if chapter_link.text.strip() in [
                 "CalcPlot3D Interactive Figures",
                 "GeoGebra Simulations",
@@ -511,15 +486,10 @@ class CourseIndex(object):
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
         index_base_path = base_path  # build_path([base_path])
-        nb_items = 0
         for course_link in courses_link:
             course_link_href = course_link.attrs.get("href", "")
             if course_link_href in self.visited_urls:
                 continue
-            if nb_items > 2:
-                break
-            print("MAIN COURSE LINK", nb_items, course_link_href)
-            nb_items += 1
             self.visited_urls.add(course_link_href)
             document = download(course_link_href)
             chapter_basepath = build_path([index_base_path, hashed(course_link.text)])
@@ -529,17 +499,13 @@ class CourseIndex(object):
                 )
 
                 course_body = query.body()
-                nb_chapter = 0
                 if course_body is not None:
                     course = Course(course_link.text, course_link_href, self.author())
                     course.thumbnail = thumbnails.get(course_link_href, None)
                     for chapter_title in course_body.find_all("a"):
-                        chapter_href = chapter_title.attrs.get("href", "")
-                        if nb_chapter > 2:
-                            break
-                        print("CHAPTER", nb_chapter, chapter_href)
-                        nb_chapter += 1
-                        chapter = Chapter(chapter_title.text, chapter_href)
+                        chapter = Chapter(
+                            chapter_title.text, chapter_title.attrs.get("href", "")
+                        )
                         chapter.to_file(chapter_basepath)
                         node = chapter.to_node()
                         course.add_node(node)
@@ -1354,28 +1320,6 @@ def download(source_id, loadjs=False):
     # return False
 
 
-def get_index_range(only_pages):
-    if only_pages is None:
-        from_i = 0
-        to_i = None
-    else:
-        index = only_pages.split(":")
-        if len(index) == 2:
-            if index[0] == "":
-                from_i = 0
-                to_i = int(index[1])
-            elif index[1] == "":
-                from_i = int(index[0])
-                to_i = None
-            else:
-                index = map(int, index)
-                from_i, to_i = index
-        elif len(index) == 1:
-            from_i = int(index[0])
-            to_i = from_i + 1
-    return from_i, to_i
-
-
 # The chef subclass
 ################################################################################
 class LibreTextsChef(JsonTreeChef):
@@ -1408,7 +1352,7 @@ class LibreTextsChef(JsonTreeChef):
         only_pages = options.get("--only-pages", None)
         only_videos = options.get("--only-videos", None)
         download_video = options.get("--download-video", "1")
-        subject = options.get("--subject", "phys")
+        subject = options.get("--subject")
         overwrite = options.get("--overwrite", "1")
         run_test = bool(int(options.get("--test", "0")))
         new_channel_id = options.get(
@@ -1446,9 +1390,11 @@ class LibreTextsChef(JsonTreeChef):
             source_id=new_channel_id.format(subject=subject),
             title=channel_name
             or SUBJECTS.get(subject, {}).get("name", "LibreTexts Channel"),
-            description="""Offers a “living library,” curated by students, faculty, and outside experts, of open-source textbooks and curricular materials to support popular secondary and college-level academic subjects, primarily in mathematics and sciences."""[
-                :400
-            ],
+            description=channel_description
+            or "Offers a “living library,” curated by students, faculty, and outside "
+            "experts, of open-source textbooks and curricular materials to support "
+            "popular secondary and college-level academic subjects, primarily in "
+            "mathematics and sciences."[:400],
             thumbnail=SUBJECTS.get(subject, {}).get("thumb"),
             author=AUTHOR,
             language=channel_language or "en",
@@ -1461,20 +1407,15 @@ class LibreTextsChef(JsonTreeChef):
 
         if run_test is True:
             return test(channel_tree)
-        else:
-            p_from_i, p_to_i = get_index_range(only_pages)
-            v_from_i, v_to_i = get_index_range(only_videos)
-            browser = Browser(BASE_URL)
-            links = browser.run(p_from_i, p_to_i)
-            collections = LinkCollection(links)
-            nb_col = 0
-            for collection_node in collections.to_node():
-                if nb_col > 2:
-                    break
-                nb_col += 1
-                if collection_node is not None:
-                    channel_tree["children"].append(collection_node)
-            return channel_tree
+
+        browser = Browser(BASE_URL)
+        links = browser.run()
+
+        collections = LinkCollection(links)
+        for collection_node in collections.to_node():
+            if collection_node is not None:
+                channel_tree["children"].append(collection_node)
+        return channel_tree
 
     def write_tree_to_json(self, channel_tree):
         write_tree_to_json_tree(self.scrape_stage, channel_tree)
