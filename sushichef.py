@@ -215,6 +215,7 @@ class Collection:
             Homework.title: Homework,
             VisualizationPhEt.title: VisualizationPhEt,
             VisualizationsSimulations.title: VisualizationsSimulations,
+            # TODO: Learning_Objects
         }
 
     def to_node(self):
@@ -275,7 +276,8 @@ class Topic(object):
 
 
 class CourseLibreTexts(Topic):
-    title = "Course Shells"  # previously "Campus Courses", "Course LibreTexts"
+    # previously "Course Shells", "Campus Courses", "Course LibreTexts"
+    title = "Campus Bookshelves"
 
     def units(self):
         for url in self:
@@ -365,6 +367,10 @@ class VisualizationsSimulations(VisualizationPhEt):
 
 
 def thumbnails_links(soup, tag, class_):
+    """map of href: img_src_url from selector (tag + class)
+
+    looks for all <a /> nodes within that selector
+    maps those with the <img />'s src it finds in it if any"""
     if soup is not None:
         courses_list = soup.find_all(tag, class_=class_)
         thumnails = {}
@@ -487,12 +493,17 @@ class CourseIndex(object):
 
         index_base_path = base_path  # build_path([base_path])
         for course_link in courses_link:
+            # build course link name
+            course_link_name = (
+                course_link.select("span.mt-sortable-listing-title")[-1]
+                or course_link.text.strip()
+            )
             course_link_href = course_link.attrs.get("href", "")
             if course_link_href in self.visited_urls:
                 continue
             self.visited_urls.add(course_link_href)
             document = download(course_link_href)
-            chapter_basepath = build_path([index_base_path, hashed(course_link.text)])
+            chapter_basepath = build_path([index_base_path, hashed(course_link_name)])
             if document is not None:
                 query = QueryPage(
                     BeautifulSoup(document, "html.parser"), course_link_href
@@ -500,7 +511,7 @@ class CourseIndex(object):
 
                 course_body = query.body()
                 if course_body is not None:
-                    course = Course(course_link.text, course_link_href, self.author())
+                    course = Course(course_link_name, course_link_href, self.author())
                     course.thumbnail = thumbnails.get(course_link_href, None)
                     for chapter_title in course_body.find_all("a"):
                         chapter = Chapter(
@@ -511,28 +522,28 @@ class CourseIndex(object):
                         course.add_node(node)
                     self.add_node(course.to_node())
                 else:
-                    if course_link.text.strip() == "Agenda":
-                        agenda = AgendaOrFlatPage(course_link.text, course_link_href)
+                    if course_link_name == "Agenda":
+                        agenda = AgendaOrFlatPage(course_link_name, course_link_href)
                         agenda.to_file(chapter_basepath)
                         self.add_node(agenda.to_node())
-                    elif course_link.text.strip() in [
+                    elif course_link_name in [
                         "CalcPlot3D Interactive Figures",
                         "GeoGebra Simulations",
                     ]:  # Not supported
                         pass
                     else:
                         course_index = CourseIndex(
-                            course_link.text,
+                            course_link_name,
                             course_link_href,
                             visited_urls=self.visited_urls,
                         )
                         result = course_index.index(
-                            build_path([base_path, hashed(course_link.text)])
+                            build_path([base_path, hashed(course_link_name)])
                         )
                         if result is None:
                             course_index_node = course_index.to_node()
                             if len(course_index_node["children"]) == 0:
-                                chapter = Chapter(course_link.text, course_link_href)
+                                chapter = Chapter(course_link_name, course_link_href)
                                 chapter.to_file(chapter_basepath)
                                 node = chapter.to_node()
                                 self.add_node(node)
