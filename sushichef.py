@@ -1,20 +1,21 @@
 #!/usr/bin/env python
-from bs4 import BeautifulSoup
-import codecs
-from collections import defaultdict, OrderedDict
-import copy
-from git import Repo
-import glob
-from le_utils.constants import licenses, content_kinds, file_formats
-import hashlib
-import json
-import logging
-import markdown2
-import ntpath
+
 import os
-from pathlib import Path
 import re
+import sys
+import json
+import time
+import logging
+import tempfile
+from urllib.error import URLError
+from urllib.parse import urljoin, urlparse
+from collections import OrderedDict
+
+import xxhash
+import youtube_dl
 import requests
+from bs4 import BeautifulSoup
+from le_utils.constants import licenses, content_kinds, file_formats
 from ricecooker.classes.licenses import get_license
 from ricecooker.chefs import JsonTreeChef
 from ricecooker.utils import downloader, html_writer
@@ -27,20 +28,10 @@ from ricecooker.utils.html import download_file
 from ricecooker.utils.jsontrees import write_tree_to_json_tree, SUBTITLES_FILE
 from ricecooker.utils.zip import create_predictable_zip
 
-import tempfile
-import time
-from urllib.error import URLError
-from urllib.parse import urljoin
-from urllib.parse import urlparse, parse_qs
-from utils import dir_exists, get_name_from_url, clone_repo, build_path
-from utils import file_exists, get_video_resolution_format, remove_links
-from utils import get_name_from_url_no_ext, get_node_from_channel, get_level_map
-from utils import remove_iframes, get_confirm_token, save_response_content
+from utils import get_name_from_url, build_path
+from utils import file_exists, remove_links
+from utils import remove_iframes
 from utils import link_to_text, remove_scripts
-import youtube_dl
-from urllib.parse import urlparse
-import sys
-import xxhash
 
 sys.setrecursionlimit(1200)
 
@@ -507,9 +498,7 @@ class CourseIndex(object):
                             break
                         print("CHAPTER", nb_chapter, chapter_href)
                         nb_chapter += 1
-                        chapter = Chapter(
-                            chapter_title.text, chapter_href
-                        )
+                        chapter = Chapter(chapter_title.text, chapter_href)
                         chapter.to_file(chapter_basepath)
                         node = chapter.to_node()
                         course.add_node(node)
