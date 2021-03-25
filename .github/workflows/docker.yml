@@ -19,7 +19,7 @@ jobs:
           on-master: dev
           tag-pattern: /^([a-z\-_0-9]+)$/
           latest-on-tag: true
-          restrict-to: openzim/libretexts-sushi-chef
+          restrict-to: openzim/librechef
           credentials:
             DOCKERIO_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
             DOCKERIO_TOKEN=${{ secrets.DOCKERHUB_PASSWORD }}
