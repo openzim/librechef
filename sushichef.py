@@ -94,31 +94,72 @@ This is the jerarchery in libretext.
        - Visualization
 """
 
-
 SUBJECTS = {
-    "phys": "https://phys.libretexts.org/",
-    "chem": "https://chem.libretexts.org/",
-    "bio": "https://bio.libretexts.org/",
-    "eng": "https://eng.libretexts.org/",
-    "math": "https://math.libretexts.org/",
+    "phys": {
+        "name": "LibreTexts Physics",
+        "thumb": "https://phys.libretexts.org/@api/deki/"
+        "files/3289/libretexts_section_complete_phys350.png",
+    },
+    "chem": {
+        "name": "LibreTexts Chemistry",
+        "thumb": "https://chem.libretexts.org/@api/deki/"
+        "files/85425/libretexts_section_complete_chem_sm_124.png",
+    },
+    "bio": {
+        "name": "LibreTexts Biology",
+        "thumb": "https://bio.libretexts.org/@api/deki/"
+        "files/8208/libretexts_section_complete_bio_header.png",
+    },
+    "eng": {
+        "name": "LibreTexts Engineering",
+        "thumb": "https://eng.libretexts.org/@api/deki/"
+        "files/1442/libretexts_section_complete_engineering_325.png",
+    },
+    "math": {
+        "name": "LibreTexts Mathematics",
+        "thumb": "https://math.libretexts.org/@api/deki/"
+        "files/1742/libretexts_section_complete_math350_sigma.png",
+    },
+    "biz": {
+        "name": "LibreTexts Business",
+        "thumb": "https://biz.libretexts.org/@api/deki/"
+        "files/170/libretexts_section_complete_biz_header.png",
+    },
+    "geo": {
+        "name": "LibreTexts Geosciences",
+        "thumb": "https://geo.libretexts.org/@api/deki/"
+        "files/357/libretexts_section_complete_geo350.png",
+    },
+    "human": {
+        "name": "LibreTexts Humanities",
+        "thumb": "https://human.libretexts.org/@api/deki/"
+        "files/126/libretexts_section_complete_hum_header.png",
+    },
+    "med": {
+        "name": "LibreTexts Medicine",
+        "thumb": "https://med.libretexts.org/@api/deki/"
+        "files/1219/libretexts_section_complete_med124.png",
+    },
+    "socialsci": {
+        "name": "LibreTexts Social Sciences",
+        "thumb": "https://socialsci.libretexts.org/@api/deki/"
+        "files/242/libretexts_section_complete_social350.png",
+    },
+    "stats": {
+        "name": "LibreTexts Statistics",
+        "thumb": "https://stats.libretexts.org/@api/deki/"
+        "files/526/libretexts_section_complete_stats350_curve.png",
+    },
+    "workforce": {
+        "name": "LibreTexts Workforce",
+        "thumb": "https://workforce.libretexts.org/@api/deki/"
+        "files/4438/libretexts_section_complete_workforce_header.png",
+    },
 }
 
-CHANNEL_NAMES = {
-    "phys": "LibreTexts Physics",
-    "chem": "LibreTexts Chemistry",
-    "bio": "LibreTexts Biology",
-    "eng": "LibreTexts Engineering",
-    "math": "LibreTexts Mathematics",
-}
 
-
-SUBJECTS_THUMBS = {
-    "phys": "https://phys.libretexts.org/@api/deki/files/3289/libretexts_section_complete_phys350.png",
-    "chem": "https://chem.libretexts.org/@api/deki/files/85425/libretexts_section_complete_chem_sm_124.png",
-    "bio": "https://bio.libretexts.org/@api/deki/files/8208/libretexts_section_complete_bio_header.png",
-    "eng": "https://eng.libretexts.org/@api/deki/files/1442/libretexts_section_complete_engineering_325.png",
-    "math": "https://math.libretexts.org/@api/deki/files/1742/libretexts_section_complete_math350_sigma.png",
-}
+def get_subject_url(subject):
+    return f"https://{subject}.libretexts.org/"
 
 
 def hashed(string_to_hash):
@@ -1394,20 +1435,21 @@ class LibreTextsChef(JsonTreeChef):
             LibreTextsChef.TREES_DATA_DIR, self.RICECOOKER_JSON_TREE
         )
 
-        LOGGER.info("Scraping {}".format(SUBJECTS[subject]))
+        LOGGER.info("Scraping {}".format(get_subject_url(subject)))
         if int(download_video) == 0:
             global DOWNLOAD_VIDEOS
             DOWNLOAD_VIDEOS = False
 
         global channel_tree
         channel_tree = dict(
-            source_domain=SUBJECTS[subject],
+            source_domain=get_subject_url(subject),
             source_id=new_channel_id.format(subject=subject),
-            title=channel_name or CHANNEL_NAMES.get(subject, "LibreTexts Channel"),
+            title=channel_name
+            or SUBJECTS.get(subject, {}).get("name", "LibreTexts Channel"),
             description="""Offers a “living library,” curated by students, faculty, and outside experts, of open-source textbooks and curricular materials to support popular secondary and college-level academic subjects, primarily in mathematics and sciences."""[
                 :400
             ],
-            thumbnail=SUBJECTS_THUMBS[subject],
+            thumbnail=SUBJECTS.get(subject, {}).get("thumb"),
             author=AUTHOR,
             language=channel_language or "en",
             children=[],
@@ -1415,7 +1457,7 @@ class LibreTextsChef(JsonTreeChef):
         )
 
         global BASE_URL
-        BASE_URL = SUBJECTS[subject]
+        BASE_URL = get_subject_url(subject)
 
         if run_test is True:
             return test(channel_tree)
