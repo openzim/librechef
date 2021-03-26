@@ -191,7 +191,7 @@ class LinkCollection:
     def to_collection(self):
         self.collection = []
         for link in self.links:
-            self.collection.append(Collection(link.text, link.attrs.get("href", "")))
+            self.collection.append(Collection(link))
 
     def to_node(self):
         for collection in self.collection:
@@ -207,9 +207,16 @@ class Collection:
         "Visualizations_and_Simulations",
     ]
 
-    def __init__(self, title, link):
-        self.title = title
-        self.source_id = link
+    def __init__(self, link):
+        self.title = link.text
+        self.source_id = link.attrs.get("href", "")
+
+        # find thumbnail url
+        if link.find("img"):
+            self.thumbnail_url = link.find("img").attrs.get("src", None)
+        else:
+            self.thumbnail_url = None
+
         self.collection = {
             CourseLibreTexts.title: CourseLibreTexts,
             TextBooksTextMaps.title: TextBooksTextMaps,
@@ -228,6 +235,7 @@ class Collection:
         else:
             LOGGER.info(self.title)
             topic = Topic(self.source_id)
+            topic.thumbnail = self.thumbnail_url
             topic.populate_thumbnails()
             topic.units()
             return topic.to_node()
@@ -244,6 +252,7 @@ class Topic(object):
         self.thumbnails_links = {}
         self.description = ""
         self.soup = self.to_soup()
+        self.thumbnail = None
         LOGGER.info("- " + self.title)
 
     def to_soup(self):
@@ -260,6 +269,14 @@ class Topic(object):
     def populate_thumbnails(self):
         pass
 
+    @property
+    def thumbnail(self):
+        return self._thumbnail
+
+    @thumbnail.setter
+    def thumbnail(self, url):
+        self._thumbnail = save_thumbnail(url, self.title)
+
     def add_node(self, node):
         if node is not None:
             self.tree_nodes[node["source_id"]] = node
@@ -271,6 +288,7 @@ class Topic(object):
             title=self.title,
             description=self.description,
             language=self.lang,
+            thumbnail=self.thumbnail,
             author="",
             license=LICENSE,
             children=list(self.tree_nodes.values()),
