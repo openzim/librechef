@@ -534,9 +534,9 @@ class CourseIndex(object):
         for course_link in courses_link:
             # build course link name
             course_link_name = (
-                course_link.select("span.mt-sortable-listing-title")[-1]
-                or course_link.text.strip()
-            )
+                course_link.find("span", class_="mt-sortable-listing-title")
+                or course_link
+            ).text.strip()
             course_link_href = course_link.attrs.get("href", "")
 
             # skip link if we're already visited it. record visit otherwie
@@ -564,6 +564,7 @@ class CourseIndex(object):
                         chapter = Chapter(
                             chapter_title.text, chapter_title.attrs.get("href", "")
                         )
+                        chapter.thumbnail = thumbnails.get(course_link_href, None)
                         chapter.to_file(chapter_basepath)
                         node = chapter.to_node()
                         course.add_node(node)
@@ -586,9 +587,12 @@ class CourseIndex(object):
                             course_link_href,
                             visited_urls=self.visited_urls,
                         )
+                        course_index.description = course_link.attrs.get("title")
+                        course_index.thumbnail = thumbnails.get(course_link_href, None)
                         result = course_index.index(
                             build_path([base_path, hashed(course_link_name)])
                         )
+
                         if result is None:
                             course_index_node = course_index.to_node()
                             if len(course_index_node["children"]) == 0:
