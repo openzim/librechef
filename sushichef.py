@@ -5,8 +5,10 @@ import re
 import sys
 import json
 import time
+import imghdr
 import logging
 import tempfile
+from io import BytesIO
 from urllib.error import URLError
 from urllib.parse import urljoin, urlparse
 from collections import OrderedDict
@@ -383,18 +385,18 @@ def thumbnails_links(soup, tag, class_):
 
 
 def save_thumbnail(url, title):
-    import imghdr
-    from io import BytesIO
+    """save url to thumbnail folder using {title}.{ext} for its format
 
+    returns filepath if suceeded or None"""
     try:
         r = requests.get(url)
-    except:
+    except Exception:
         return None
     else:
         img_buffer = BytesIO(r.content)
         img_ext = imghdr.what(img_buffer)
-        if img_ext in ["jpeg", "png"]:
-            filename = "{}.{}".format(title, img_ext)
+        if img_ext in ("jpeg", "png"):
+            filename = f"{title}.{img_ext}"
             base_dir = build_path([DATA_DIR, DATA_DIR_SUBJECT, "thumbnails"])
             filepath = os.path.join(base_dir, filename)
             with open(filepath, "wb") as f:
@@ -449,6 +451,8 @@ class CourseIndex(object):
 
     def index(self, base_path):
         base_url_path_elems = urlparse(self.source_id).path.split("/")
+
+        # exit this if we're back to main collection
         base_url_classes = Collection.url_names
         if (
             len(base_url_path_elems) == 2
@@ -456,6 +460,8 @@ class CourseIndex(object):
             or len(base_url_path_elems) == 1
         ):
             return "cycle"
+
+        # retry then give up if can't get html doc
         if self.soup is None:
             retry_times = 0
             while retry_times < 5 and self.soup is None:
@@ -465,33 +471,48 @@ class CourseIndex(object):
             if self.soup is None:
                 LOGGER.error("Could not download content ")
                 return
+
+        # look for courses link
         courses_link = self.soup.find_all(
             lambda tag: tag.name == "a"
             and tag.findParent("dt", class_="mt-listing-detailed-title")
         )
+
+        # look for topic links if there's not courses links
         if len(courses_link) == 0:
             courses_link = self.soup.find_all(
                 lambda tag: tag.name == "a"
                 and tag.findParent("li", class_="mt-sortable-listing")
             )
+
+        # if there's no topic links neither, look for other links
         if len(courses_link) == 0:
             query = QueryPage(self.soup, self.source_id)
             body = query.body()
+
+            # any link within the <body>
             if body is not None:
                 courses_link = body.find_all("a")
+
+            # or any links within a div.wiki-tree
             else:
                 courses_link = self.soup.find_all(
                     lambda tag: tag.name == "a"
                     and tag.findParent("div", class_="wiki-tree")
                 )
+
+                # give up if no links were found
                 if len(courses_link) == 0:
                     return
                 else:
                     LOGGER.info("OK")
 
+        # keep thumbnails links for topic links
         thumbnails = thumbnails_links(self.soup, "li", "mt-sortable-listing")
 
         index_base_path = base_path  # build_path([base_path])
+
+        # loop over all links (either for topic or course)
         for course_link in courses_link:
             # build course link name
             course_link_name = (
@@ -499,17 +520,25 @@ class CourseIndex(object):
                 or course_link.text.strip()
             )
             course_link_href = course_link.attrs.get("href", "")
+
+            # skip link if we're already visited it. record visit otherwie
             if course_link_href in self.visited_urls:
                 continue
             self.visited_urls.add(course_link_href)
+
+            # get HTML source of the target link
             document = download(course_link_href)
             chapter_basepath = build_path([index_base_path, hashed(course_link_name)])
             if document is not None:
+
+                # get topic hierarchy from API
                 query = QueryPage(
                     BeautifulSoup(document, "html.parser"), course_link_href
                 )
 
                 course_body = query.body()
+
+                # topic hierarchy retrieved ; build a course and its chapters
                 if course_body is not None:
                     course = Course(course_link_name, course_link_href, self.author())
                     course.thumbnail = thumbnails.get(course_link_href, None)
@@ -521,6 +550,8 @@ class CourseIndex(object):
                         node = chapter.to_node()
                         course.add_node(node)
                     self.add_node(course.to_node())
+
+                # no topic hierarchy retrieved
                 else:
                     if course_link_name == "Agenda":
                         agenda = AgendaOrFlatPage(course_link_name, course_link_href)
@@ -657,8 +688,8 @@ class AgendaOrFlatPage(object):
             self.filepath = filepath
             body = self.clean(self.body())
             try:
-                string_to_write = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(
-                    body
+                string_to_write = '<html><head><meta charset="utf-8"><title>{}</title><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></body></html>'.format(
+                    self.title, body
                 )
                 self.write_index(
                     self.filepath,
@@ -906,8 +937,8 @@ class Chapter(AgendaOrFlatPage):
             body = self.clean(self.body())
             images = self.to_local_images(body)
             try:
-                string_to_write = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(
-                    body, mathjax_scripts
+                string_to_write = '<html><head><meta charset="utf-8"><title>{}</title><link rel="stylesheet" href="css/styles.css"></head><body><div class="main-content-with-sidebar">{}</div><script src="js/scripts.js"></script>{}<script src="js/MathJax.js?config=TeX-AMS_HTML"></script></body></html>'.format(
+                    self.title, body, mathjax_scripts
                 )
                 self.write_index(
                     self.filepath,
@@ -955,12 +986,14 @@ class Chapter(AgendaOrFlatPage):
                 node["children"].append(node_)
 
     def to_node(self):
+        # found phet nodes ; record single phet node if alone or topic + phet nodes
         if self.phet_nodes is not None and len(self.phet_nodes) > 0:
             if len(self.phet_nodes) > 1:
                 node = self.topic_node()
                 self.add_to_node(node, self.phet_nodes)
             else:
                 node = self.phet_nodes[0]
+        # found video nodes or pdf nodes ; record topic node + media nodes
         elif (
             self.video_nodes is not None
             and len(self.video_nodes) > 0
@@ -971,12 +1004,19 @@ class Chapter(AgendaOrFlatPage):
             node["children"].append(self.html_node())
             self.add_to_node(node, self.video_nodes)
             self.add_to_node(node, self.pdf_nodes)
+        # only found HTML ; record single html node
         else:
             node = self.html_node()
         return node
 
 
 class QueryPage:
+    """Access a Page's Topic hierarchy as HTML through MindTouch API
+
+    - finds Mindtouch's page-id from a Libretext page (soup)
+    - query Mindtouch's API using the id
+    - return soup of this JSON response's `body` field which conteains topic tree"""
+
     def __init__(self, soup, source_id):
         self.soup = soup
         self.get_id()
@@ -1257,6 +1297,8 @@ class PhetResource(object):
 
 
 class File(object):
+    """ Document node from its URL, downloaded to base_path """
+
     def __init__(self, source_id, lang="en", name=None):
         self.filename = get_name_from_url(source_id)
         self.source_id = (
