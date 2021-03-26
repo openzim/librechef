@@ -414,7 +414,7 @@ def save_thumbnail(url, title):
         img_buffer = BytesIO(r.content)
         img_ext = imghdr.what(img_buffer)
         if img_ext in ("jpeg", "png"):
-            filename = f"{title}.{img_ext}"
+            filename = f"{title.replace('/', '_')}.{img_ext}"
             base_dir = build_path([DATA_DIR, DATA_DIR_SUBJECT, "thumbnails"])
             filepath = os.path.join(base_dir, filename)
             with open(filepath, "wb") as f:
