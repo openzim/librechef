@@ -1053,14 +1053,14 @@ class QueryPage:
         else:
             self.x_deki_token = None
 
+        self.page_id = None
+        self.guid = None
         query_param = self.soup.find("div", class_="mt-guide-tabs-container")
         if query_param is not None:
             self.page_id = query_param.attrs.get("data-page-id", "")
             query_param = self.soup.find("li", class_="mt-guide-tab")
-            self.guid = query_param.attrs.get("data-guid", "")
-        else:
-            self.page_id = None
-            self.guid = None
+            if query_param is not None:
+                self.guid = query_param.attrs.get("data-guid", "")
 
     def body(self):
         if self.page_id is not None and self.guid is not None:
