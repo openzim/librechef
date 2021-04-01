@@ -303,7 +303,9 @@ class CourseLibreTexts(Topic):
         for url in self:
             topic = Topic(url.attrs.get("href"), title=url.text)
             for link in topic:
-                course_index = CourseIndex(link.text, link.attrs.get("href"))
+                course_index = CourseIndex(
+                    link.text or link.attrs.get("title"), link.attrs.get("href")
+                )
                 course_index.description = link.attrs.get("title")
                 path = [
                     DATA_DIR,
@@ -326,7 +328,8 @@ class TextBooksTextMaps(Topic):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
         for chapter_link in self:
             course_index = CourseIndex(
-                chapter_link.text, chapter_link.attrs.get("href", "")
+                chapter_link.text or chapter_link.attrs.get("title"),
+                chapter_link.attrs.get("href", ""),
             )
             course_index.description = chapter_link.attrs.get("title")
             course_index.thumbnail = self.thumbnails_links.get(
@@ -346,7 +349,8 @@ class HomeworkExercices(Topic):
         base_path = [DATA_DIR, DATA_DIR_SUBJECT, hashed(self.title)]
         for chapter_link in self:
             course_index = CourseIndex(
-                chapter_link.text, chapter_link.attrs.get("href", "")
+                chapter_link.text or chapter_link.attrs.get("title"),
+                chapter_link.attrs.get("href", ""),
             )
             course_index.description = chapter_link.attrs.get("title")
             course_index.thumbnail = self.thumbnails_links.get(
@@ -372,7 +376,8 @@ class VisualizationPhEt(Topic):
             ]:
                 continue
             course_index = CourseIndex(
-                chapter_link.text, chapter_link.attrs.get("href", "")
+                chapter_link.text or chapter_link.attrs.get("title"),
+                chapter_link.attrs.get("href", ""),
             )
             course_index.description = chapter_link.attrs.get("title")
             course_index.thumbnail = self.thumbnails_links.get(
@@ -583,7 +588,7 @@ class CourseIndex(object):
                         pass
                     else:
                         course_index = CourseIndex(
-                            course_link_name,
+                            course_link_name or course_link.attrs.get("title"),
                             course_link_href,
                             visited_urls=self.visited_urls,
                         )
