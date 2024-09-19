@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlparse
 from collections import OrderedDict
 
 import xxhash
-import youtube_dl
+import yt_dlp
 import requests
 from bs4 import BeautifulSoup
 from le_utils.constants import licenses, content_kinds, file_formats
@@ -1162,7 +1162,7 @@ class YouTubeResource(object):
             "noplaylist": True,
         }
 
-        with youtube_dl.YoutubeDL(ydl_options) as ydl:
+        with yt_dlp.YoutubeDL(ydl_options) as ydl:
             try:
                 ydl.add_default_info_extractors()
                 info = ydl.extract_info(
@@ -1170,9 +1170,9 @@ class YouTubeResource(object):
                 )
                 return info
             except (
-                youtube_dl.utils.DownloadError,
-                youtube_dl.utils.ContentTooShortError,
-                youtube_dl.utils.ExtractorError,
+                yt_dlp.utils.DownloadError,
+                yt_dlp.utils.ContentTooShortError,
+                yt_dlp.utils.ExtractorError,
             ) as e:
                 LOGGER.info("An error occured " + str(e))
                 LOGGER.info(self.source_id)
@@ -1225,9 +1225,9 @@ class YouTubeResource(object):
                 LOGGER.info("Download retry")
                 time.sleep(0.8)
             except (
-                youtube_dl.utils.DownloadError,
-                youtube_dl.utils.ContentTooShortError,
-                youtube_dl.utils.ExtractorError,
+                yt_dlp.utils.DownloadError,
+                yt_dlp.utils.ContentTooShortError,
+                yt_dlp.utils.ExtractorError,
                 OSError,
             ) as e:
                 LOGGER.info(
