@@ -180,6 +180,10 @@ class Browser:
         section = soup.find("section", class_="mt-content-container")
         section_div = section.find("div", class_="noindex")
         for tag_a in section_div.find_all("a"):
+            if not (tag_a.text or tag_a.attrs.get("title")):
+                # Ignore links without text / title, they correspond to the image
+                # and have already been found with the title
+                continue
             yield tag_a
 
 
@@ -429,6 +433,10 @@ def save_thumbnail(url, title):
 
 class CourseIndex(object):
     def __init__(self, title, url, visited_urls=None):
+        if not title:
+            raise Exception("CourseIndex title cannot be None or empty")
+        if not url:
+            raise Exception("CourseIndex url cannot be None or empty")
         self.source_id = url
         self.title = title
         self.lang = "en"
@@ -438,8 +446,8 @@ class CourseIndex(object):
         self.author()
         self._thumbnail = None
         self.visited_urls = visited_urls if visited_urls is not None else set([])
-        LOGGER.info("----- Course Index title: " + self.title)
-        LOGGER.info("-----    url: " + self.source_id)
+        LOGGER.info(f"----- Course Index title: {self.title}")
+        LOGGER.info(f"-----    url: {self.source_id}")
 
     def to_soup(self, loadjs=False):
         document = download(self.source_id, loadjs=loadjs)
