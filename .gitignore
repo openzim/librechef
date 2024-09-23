@@ -102,3 +102,9 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Local files
+chefdata
+restore
+storage
+.ricecookerfilecache
