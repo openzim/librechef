@@ -181,8 +181,12 @@ class Browser:
         section_div = section.find("div", class_="noindex")
         for tag_a in section_div.find_all("a"):
             if not (tag_a.text or tag_a.attrs.get("title")):
-                # Ignore links without text / title, they correspond to the image
-                # and have already been found with the title
+                # Ignore links without text / title, they correspond to the
+                # image and have already been found with the title
+                continue
+            if "mt-listing-detailed-subpage-title" in tag_a.get("class", []):
+                # Ignore subpages found on college, these subpages will be
+                # fetched later when exploring the course
                 continue
             yield tag_a
 
