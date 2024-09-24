@@ -153,3 +153,11 @@ def link_to_text(content):
                 elif url.startswith("http") or url.startswith("/"):
                     tag.wrap(span)
                     span.insert(1, " (" + url + ")")
+
+
+def remove_src_set(content):
+    if content is None:
+        return
+    for img_tag in content.find_all("img"):
+        if 'srcset' in img_tag.attrs:
+            del img_tag['srcset']

@@ -30,7 +30,7 @@ from ricecooker.utils.html import download_file
 from ricecooker.utils.jsontrees import write_tree_to_json_tree, SUBTITLES_FILE
 from ricecooker.utils.zip import create_predictable_zip
 
-from utils import get_name_from_url, build_path
+from utils import remove_src_set, get_name_from_url, build_path
 from utils import file_exists, remove_links
 from utils import remove_iframes
 from utils import link_to_text, remove_scripts
@@ -703,6 +703,7 @@ class AgendaOrFlatPage(object):
         remove_links(content)
         remove_iframes(content)
         remove_scripts(content)
+        remove_src_set(content)
         return content
 
     def to_soup(self):
