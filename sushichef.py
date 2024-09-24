@@ -787,7 +787,7 @@ class Chapter(AgendaOrFlatPage):
             return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../MathJax/"
+        mathajax_path = "../MathJax-2.7.5/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
