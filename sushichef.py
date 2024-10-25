@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlparse
 from collections import OrderedDict
 
 import xxhash
-import youtube_dl
+import yt_dlp
 import requests
 from bs4 import BeautifulSoup
 from le_utils.constants import licenses, content_kinds, file_formats
@@ -30,7 +30,7 @@ from ricecooker.utils.html import download_file
 from ricecooker.utils.jsontrees import write_tree_to_json_tree, SUBTITLES_FILE
 from ricecooker.utils.zip import create_predictable_zip
 
-from utils import get_name_from_url, build_path
+from utils import remove_src_set, get_name_from_url, build_path
 from utils import file_exists, remove_links
 from utils import remove_iframes
 from utils import link_to_text, remove_scripts
@@ -180,6 +180,14 @@ class Browser:
         section = soup.find("section", class_="mt-content-container")
         section_div = section.find("div", class_="noindex")
         for tag_a in section_div.find_all("a"):
+            if not (tag_a.text or tag_a.attrs.get("title")):
+                # Ignore links without text / title, they correspond to the
+                # image and have already been found with the title
+                continue
+            if "mt-listing-detailed-subpage-title" in tag_a.get("class", []):
+                # Ignore subpages found on college, these subpages will be
+                # fetched later when exploring the course
+                continue
             yield tag_a
 
 
@@ -429,6 +437,10 @@ def save_thumbnail(url, title):
 
 class CourseIndex(object):
     def __init__(self, title, url, visited_urls=None):
+        if not title:
+            raise Exception("CourseIndex title cannot be None or empty")
+        if not url:
+            raise Exception("CourseIndex url cannot be None or empty")
         self.source_id = url
         self.title = title
         self.lang = "en"
@@ -438,8 +450,8 @@ class CourseIndex(object):
         self.author()
         self._thumbnail = None
         self.visited_urls = visited_urls if visited_urls is not None else set([])
-        LOGGER.info("----- Course Index title: " + self.title)
-        LOGGER.info("-----    url: " + self.source_id)
+        LOGGER.info(f"----- Course Index title: {self.title}")
+        LOGGER.info(f"-----    url: {self.source_id}")
 
     def to_soup(self, loadjs=False):
         document = download(self.source_id, loadjs=loadjs)
@@ -695,6 +707,7 @@ class AgendaOrFlatPage(object):
         remove_links(content)
         remove_iframes(content)
         remove_scripts(content)
+        remove_src_set(content)
         return content
 
     def to_soup(self):
@@ -774,7 +787,7 @@ class Chapter(AgendaOrFlatPage):
             return "".join([str(s) for s in scripts])
 
     def mathjax_dependences(self, filepath):
-        mathajax_path = "../MathJax/"
+        mathajax_path = "../MathJax-2.7.5/"
         dependences = [
             "config/TeX-AMS_HTML.js",
             "jax/input/TeX/config.js",
@@ -1162,7 +1175,7 @@ class YouTubeResource(object):
             "noplaylist": True,
         }
 
-        with youtube_dl.YoutubeDL(ydl_options) as ydl:
+        with yt_dlp.YoutubeDL(ydl_options) as ydl:
             try:
                 ydl.add_default_info_extractors()
                 info = ydl.extract_info(
@@ -1170,9 +1183,9 @@ class YouTubeResource(object):
                 )
                 return info
             except (
-                youtube_dl.utils.DownloadError,
-                youtube_dl.utils.ContentTooShortError,
-                youtube_dl.utils.ExtractorError,
+                yt_dlp.utils.DownloadError,
+                yt_dlp.utils.ContentTooShortError,
+                yt_dlp.utils.ExtractorError,
             ) as e:
                 LOGGER.info("An error occured " + str(e))
                 LOGGER.info(self.source_id)
@@ -1225,9 +1238,9 @@ class YouTubeResource(object):
                 LOGGER.info("Download retry")
                 time.sleep(0.8)
             except (
-                youtube_dl.utils.DownloadError,
-                youtube_dl.utils.ContentTooShortError,
-                youtube_dl.utils.ExtractorError,
+                yt_dlp.utils.DownloadError,
+                yt_dlp.utils.ContentTooShortError,
+                yt_dlp.utils.ExtractorError,
                 OSError,
             ) as e:
                 LOGGER.info(

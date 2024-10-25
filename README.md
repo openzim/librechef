@@ -43,3 +43,5 @@ into a format that can be imported into Kolibri Studio.
      
 ## MathJax
 MathJax files must be in a upper level folder i.e ../ or will raise an error. 
+
+Version 2.7.5 should be used as-of Sept. 2024, and hence placed in ../MathJax-2.7.5

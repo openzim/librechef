@@ -4,3 +4,4 @@ markdown2
 GitPython
 numpy
 xxhash
+yt-dlp

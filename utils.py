@@ -3,7 +3,9 @@ import ntpath
 import os
 from pathlib import Path
 from bs4 import Tag
+import re
 
+REFERENCE_REGEX = re.compile(".*#\d+$")
 
 def dir_exists(filepath):
     file_ = Path(filepath)
@@ -143,6 +145,19 @@ def link_to_text(content):
                 url = tag["href"]
                 if url.endswith(".pdf"):
                     pass
+                elif REFERENCE_REGEX.match(url):
+                    # we just remove links for references which are already in
+                    # document, even if the reference is in another course, see
+                    # https://github.com/openzim/librechef/issues/36
+                    pass
                 elif url.startswith("http") or url.startswith("/"):
                     tag.wrap(span)
                     span.insert(1, " (" + url + ")")
+
+
+def remove_src_set(content):
+    if content is None:
+        return
+    for img_tag in content.find_all("img"):
+        if 'srcset' in img_tag.attrs:
+            del img_tag['srcset']
