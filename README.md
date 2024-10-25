@@ -1,5 +1,10 @@
 # LibreTexts Chef
 
+> [!WARNING]
+> This fork was an attempt by openZIM / Kiwix to fix sushichef recipe for libretexts.org, in order to create a Kolibri channel from a libretexts.org library.
+> It has finally been judged "better" to create our own scraper. This fork is hence "abandonned" as-is, and kept public only for further reference.
+> Scraper for libretexts.org is available at https://github.com/openzim/mindtouch
+
 Kolibri is an open source educational platform to distribute content to areas with
 little or no internet connectivity. Educational content is created and edited on [Kolibri Studio](https://studio.learningequality.org),
 which is a platform for organizing content to import from the Kolibri applications. The purpose
